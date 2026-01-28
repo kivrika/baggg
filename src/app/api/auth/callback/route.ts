@@ -11,11 +11,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    let user = getUserByPrivyId(privyId);
+    let user = await getUserByPrivyId(privyId);
 
     if (!user) {
       // New user - create in DB
-      user = createUser({
+      user = await createUser({
         privyId,
         twitterUsername,
         twitterName,
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
 
     // Existing user - update wallet if changed
     if (walletAddress && user.wallet_address !== walletAddress) {
-      updateUserWallet(privyId, walletAddress);
+      await updateUserWallet(privyId, walletAddress);
     }
 
     return NextResponse.json({ user, isNew: false });

@@ -1,78 +1,90 @@
-import Database from "better-sqlite3";
-import path from "path";
+import { neon } from "@neondatabase/serverless";
 import { DBUser } from "@/types";
 
-const DB_PATH = path.join(process.cwd(), "data", "friendtech.db");
+const sql = neon(process.env.DATABASE_URL!);
 
-let _db: Database.Database | null = null;
+let initialized = false;
 
-function getDb(): Database.Database {
-  if (!_db) {
-    const fs = require("fs");
-    const dir = path.dirname(DB_PATH);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+async function initDb() {
+  if (initialized) return;
 
-    _db = new Database(DB_PATH);
-    _db.pragma("journal_mode = WAL");
-    _db.exec(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        privy_id TEXT UNIQUE NOT NULL,
-        twitter_username TEXT UNIQUE NOT NULL,
-        twitter_name TEXT,
-        twitter_pfp TEXT,
-        wallet_address TEXT,
-        token_mint TEXT,
-        token_name TEXT,
-        token_symbol TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-  }
-  return _db;
+  await sql`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      privy_id TEXT UNIQUE NOT NULL,
+      twitter_username TEXT UNIQUE NOT NULL,
+      twitter_name TEXT,
+      twitter_pfp TEXT,
+      wallet_address TEXT,
+      token_mint TEXT,
+      token_name TEXT,
+      token_symbol TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+
+  initialized = true;
 }
 
-export function getUserByPrivyId(privyId: string): DBUser | undefined {
-  return getDb().prepare("SELECT * FROM users WHERE privy_id = ?").get(privyId) as DBUser | undefined;
+export async function getUserByPrivyId(privyId: string): Promise<DBUser | undefined> {
+  await initDb();
+  const rows = await sql`SELECT * FROM users WHERE privy_id = ${privyId}`;
+  return rows[0] as DBUser | undefined;
 }
 
-export function getUserByTwitter(username: string): DBUser | undefined {
-  return getDb().prepare("SELECT * FROM users WHERE twitter_username = ?").get(username) as DBUser | undefined;
+export async function getUserByTwitter(username: string): Promise<DBUser | undefined> {
+  await initDb();
+  const rows = await sql`SELECT * FROM users WHERE twitter_username = ${username}`;
+  return rows[0] as DBUser | undefined;
 }
 
-export function getUserByTokenMint(mint: string): DBUser | undefined {
-  return getDb().prepare("SELECT * FROM users WHERE token_mint = ?").get(mint) as DBUser | undefined;
+export async function getUserByTokenMint(mint: string): Promise<DBUser | undefined> {
+  await initDb();
+  const rows = await sql`SELECT * FROM users WHERE token_mint = ${mint}`;
+  return rows[0] as DBUser | undefined;
 }
 
-export function createUser(data: {
+export async function createUser(data: {
   privyId: string;
   twitterUsername: string;
   twitterName?: string;
   twitterPfp?: string;
   walletAddress?: string;
-}): DBUser {
-  const stmt = getDb().prepare(`
+}): Promise<DBUser> {
+  await initDb();
+  await sql`
     INSERT INTO users (privy_id, twitter_username, twitter_name, twitter_pfp, wallet_address)
-    VALUES (?, ?, ?, ?, ?)
-  `);
-  stmt.run(data.privyId, data.twitterUsername, data.twitterName || null, data.twitterPfp || null, data.walletAddress || null);
-  return getUserByPrivyId(data.privyId)!;
+    VALUES (${data.privyId}, ${data.twitterUsername}, ${data.twitterName || null}, ${data.twitterPfp || null}, ${data.walletAddress || null})
+    ON CONFLICT (privy_id) DO UPDATE SET
+      twitter_username = ${data.twitterUsername},
+      twitter_name = ${data.twitterName || null},
+      twitter_pfp = ${data.twitterPfp || null},
+      wallet_address = COALESCE(users.wallet_address, ${data.walletAddress || null})
+  `;
+  return (await getUserByPrivyId(data.privyId))!;
 }
 
-export function updateUserToken(privyId: string, tokenMint: string, tokenName: string, tokenSymbol: string) {
-  getDb().prepare(`
-    UPDATE users SET token_mint = ?, token_name = ?, token_symbol = ? WHERE privy_id = ?
-  `).run(tokenMint, tokenName, tokenSymbol, privyId);
+export async function updateUserToken(privyId: string, tokenMint: string, tokenName: string, tokenSymbol: string) {
+  await initDb();
+  await sql`
+    UPDATE users SET token_mint = ${tokenMint}, token_name = ${tokenName}, token_symbol = ${tokenSymbol}
+    WHERE privy_id = ${privyId}
+  `;
 }
 
-export function updateUserWallet(privyId: string, walletAddress: string) {
-  getDb().prepare("UPDATE users SET wallet_address = ? WHERE privy_id = ?").run(walletAddress, privyId);
+export async function updateUserWallet(privyId: string, walletAddress: string) {
+  await initDb();
+  await sql`UPDATE users SET wallet_address = ${walletAddress} WHERE privy_id = ${privyId}`;
 }
 
-export function getAllUsersWithCoins(): DBUser[] {
-  return getDb().prepare("SELECT * FROM users WHERE token_mint IS NOT NULL ORDER BY created_at DESC").all() as DBUser[];
+export async function getAllUsersWithCoins(): Promise<DBUser[]> {
+  await initDb();
+  const rows = await sql`SELECT * FROM users WHERE token_mint IS NOT NULL ORDER BY created_at DESC`;
+  return rows as DBUser[];
 }
 
-export function getAllUsers(): DBUser[] {
-  return getDb().prepare("SELECT * FROM users ORDER BY created_at DESC").all() as DBUser[];
+export async function getAllUsers(): Promise<DBUser[]> {
+  await initDb();
+  const rows = await sql`SELECT * FROM users ORDER BY created_at DESC`;
+  return rows as DBUser[];
 }

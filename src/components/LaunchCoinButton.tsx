@@ -42,17 +42,31 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
 
       if (!data.success) throw new Error(data.error);
 
-      setStatus("Signing transaction...");
-      const txBytes = Uint8Array.from(atob(data.transaction), (c) => c.charCodeAt(0));
+      // Sign and send config transactions first (if any)
+      if (data.configTransactions && data.configTransactions.length > 0) {
+        setStatus(`Signing config (${data.configTransactions.length} tx)...`);
+        for (let i = 0; i < data.configTransactions.length; i++) {
+          const txBytes = Uint8Array.from(atob(data.configTransactions[i]), (c) => c.charCodeAt(0));
+          await signAndSendTransaction({
+            wallet,
+            transaction: txBytes,
+          });
+          setStatus(`Config ${i + 1}/${data.configTransactions.length} done`);
+        }
+      }
 
-      const { signature } = await signAndSendTransaction({
+      // Sign and send launch transaction
+      setStatus("Launching token...");
+      const launchTxBytes = Uint8Array.from(atob(data.launchTransaction), (c) => c.charCodeAt(0));
+      await signAndSendTransaction({
         wallet,
-        transaction: txBytes,
+        transaction: launchTxBytes,
       });
 
       setStatus(`Coin launched! ${data.tokenSymbol}`);
       onLaunched?.(data.tokenMint);
     } catch (error) {
+      console.error("Launch error:", error);
       setStatus(`Failed: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
       setLoading(false);
@@ -71,6 +85,11 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
       {status && (
         <p className={`mt-2 text-sm text-center ${status.includes("Failed") ? "text-red-400" : "text-green-400"}`}>
           {status}
+        </p>
+      )}
+      {!wallet && (
+        <p className="mt-2 text-xs text-gray-500 text-center">
+          Connect wallet to launch
         </p>
       )}
     </div>

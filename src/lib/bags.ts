@@ -1,5 +1,4 @@
 import {
-  BagsResponse,
   BagsTokenInfo,
   BagsFeeShareConfig,
   BagsFeeClaimer,
@@ -10,7 +9,7 @@ import {
 const BASE_URL = "https://public-api-v2.bags.fm/api/v1";
 
 function getApiKey(): string {
-  const key = process.env.BAGS_API_KEY;
+  const key = process.env.BAGS_API_KEY?.trim();
   if (!key) throw new Error("BAGS_API_KEY is not set");
   return key;
 }
@@ -36,11 +35,12 @@ async function bagsRequest<T>(
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
 
-  const data = (await res.json()) as BagsResponse<T>;
+  const data = await res.json();
   if (!data.success || !data.response) {
-    throw new Error(data.error || `BagsAPI error: ${res.status}`);
+    console.error("BagsAPI error response:", JSON.stringify(data, null, 2));
+    throw new Error(data.error || data.message || `BagsAPI error: ${res.status} - ${JSON.stringify(data)}`);
   }
-  return data.response;
+  return data.response as T;
 }
 
 // ─── Token Launch ───────────────────────────────────────────────
@@ -63,11 +63,17 @@ export async function createTokenInfo(params: {
   });
 }
 
-export async function createFeeShareConfig(
-  claimers: BagsFeeClaimer[]
-): Promise<BagsFeeShareConfig> {
+export async function createFeeShareConfig(params: {
+  payer: string;
+  baseMint: string;
+  claimersArray: string[];
+  basisPointsArray: number[];
+}): Promise<BagsFeeShareConfig> {
   return bagsRequest<BagsFeeShareConfig>("POST", "/fee-share/config", {
-    claimers,
+    payer: params.payer,
+    baseMint: params.baseMint,
+    claimersArray: params.claimersArray,
+    basisPointsArray: params.basisPointsArray,
   });
 }
 

@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserByPrivyId, updateUserToken } from "@/lib/db";
-import {
-  createTokenInfo,
-  createFeeShareConfig,
-  createLaunchTransaction,
-} from "@/lib/bags";
+import { launchTokenWithSDK } from "@/lib/bags-sdk";
 
-// Launch a new coin for a user via BagsAPI
+// Launch a new coin for a user via BagsSDK
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -16,7 +12,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing privyId or walletAddress" }, { status: 400 });
     }
 
-    const user = getUserByPrivyId(privyId);
+    const user = await getUserByPrivyId(privyId);
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
@@ -26,43 +22,33 @@ export async function POST(req: NextRequest) {
     }
 
     const tokenName = user.twitter_name || user.twitter_username;
-    const tokenSymbol = `$${user.twitter_username.toUpperCase().slice(0, 8)}`;
+    const tokenSymbol = user.twitter_username.toUpperCase().slice(0, 8);
     const description = `Social token for @${user.twitter_username} on FriendBags`;
-    const imageUrl = user.twitter_pfp || "https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png";
 
-    // Step 1: Create token metadata
-    const tokenInfo = await createTokenInfo({
+    // Convert Twitter PFP to 400x400 version
+    let imageUrl = user.twitter_pfp || "https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png";
+    imageUrl = imageUrl.replace(/_normal\.(jpg|png|gif|webp)/, "_400x400.$1")
+                       .replace(/_bigger\.(jpg|png|gif|webp)/, "_400x400.$1")
+                       .replace(/_mini\.(jpg|png|gif|webp)/, "_400x400.$1");
+
+    // Use SDK to launch token
+    const result = await launchTokenWithSDK({
       name: tokenName,
       symbol: tokenSymbol,
       description,
       imageUrl,
       twitter: user.twitter_username,
+      creatorWallet: walletAddress,
     });
 
-    // Step 2: Create fee share config (100% to creator)
-    const feeConfig = await createFeeShareConfig([
-      {
-        wallet: walletAddress,
-        bps: 10000, // 100% to creator
-      },
-    ]);
-
-    // Step 3: Create launch transaction
-    const launchResult = await createLaunchTransaction({
-      tokenMint: tokenInfo.tokenMint,
-      launchWallet: walletAddress,
-      initialBuyLamports: 0,
-      configKey: feeConfig.meteoraConfigKey,
-      metadataUrl: tokenInfo.tokenMetadata,
-    });
-
-    // Step 4: Update DB with token info
-    updateUserToken(privyId, tokenInfo.tokenMint, tokenName, tokenSymbol);
+    // Update DB with token info
+    await updateUserToken(privyId, result.tokenMint, tokenName, tokenSymbol);
 
     return NextResponse.json({
       success: true,
-      tokenMint: tokenInfo.tokenMint,
-      transaction: launchResult.transaction,
+      tokenMint: result.tokenMint,
+      configTransactions: result.configTransactions,
+      launchTransaction: result.launchTransaction,
       tokenName,
       tokenSymbol,
     });

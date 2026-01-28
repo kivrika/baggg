@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallets } from "@privy-io/react-auth/solana";
 import LaunchCoinButton from "@/components/LaunchCoinButton";
+import WalletInfo from "@/components/WalletInfo";
 import { DBUser } from "@/types";
 
 interface AuthSectionProps {
@@ -52,22 +53,28 @@ function AuthSectionInner({ onUserSynced }: AuthSectionProps) {
 
   if (currentUser && !currentUser.token_mint) {
     return (
-      <div className="max-w-md mx-auto mb-12 p-6 rounded-xl border border-violet-500/30 bg-violet-500/5">
-        <h2 className="text-lg font-semibold text-center mb-3">Launch your coin</h2>
-        <p className="text-sm text-gray-400 text-center mb-4">
-          Create your personal token on Solana. Others can buy and sell it.
-        </p>
-        <LaunchCoinButton onLaunched={() => setSynced(false)} />
-      </div>
+      <>
+        <WalletInfo />
+        <div className="max-w-md mx-auto mb-12 p-6 rounded-xl border border-violet-500/30 bg-violet-500/5">
+          <h2 className="text-lg font-semibold text-center mb-3">Launch your coin</h2>
+          <p className="text-sm text-gray-400 text-center mb-4">
+            Create your personal token on Solana. Others can buy and sell it.
+          </p>
+          <LaunchCoinButton onLaunched={() => setSynced(false)} />
+        </div>
+      </>
     );
   }
 
   if (currentUser?.token_mint) {
     return (
-      <div className="max-w-md mx-auto mb-12 p-4 rounded-xl border border-green-500/30 bg-green-500/5 text-center">
-        <p className="text-green-400 font-medium">Your coin is live: {currentUser.token_symbol}</p>
-        <p className="text-xs text-gray-500 font-mono mt-1">{currentUser.token_mint}</p>
-      </div>
+      <>
+        <WalletInfo />
+        <div className="max-w-md mx-auto mb-12 p-4 rounded-xl border border-green-500/30 bg-green-500/5 text-center">
+          <p className="text-green-400 font-medium">Your coin is live: {currentUser.token_symbol}</p>
+          <p className="text-xs text-gray-500 font-mono mt-1">{currentUser.token_mint}</p>
+        </div>
+      </>
     );
   }
 
