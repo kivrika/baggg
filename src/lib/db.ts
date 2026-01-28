@@ -88,3 +88,13 @@ export async function getAllUsers(): Promise<DBUser[]> {
   const rows = await sql`SELECT * FROM users ORDER BY created_at DESC`;
   return rows as DBUser[];
 }
+
+export async function clearUserToken(privyId: string) {
+  await initDb();
+  await sql`UPDATE users SET token_mint = NULL, token_name = NULL, token_symbol = NULL WHERE privy_id = ${privyId}`;
+}
+
+export async function clearUserTokenByWallet(walletAddress: string) {
+  await initDb();
+  await sql`UPDATE users SET token_mint = NULL, token_name = NULL, token_symbol = NULL WHERE wallet_address = ${walletAddress}`;
+}
