@@ -148,5 +148,33 @@ export async function getTokenLifetimeFees(tokenMint: string) {
   );
 }
 
+// ─── Fee Claiming ───────────────────────────────────────────────
+
+export interface ClaimableFees {
+  claimable: string;
+  claimed: string;
+  total: string;
+}
+
+export async function getClaimableFees(params: {
+  tokenMint: string;
+  wallet: string;
+}): Promise<ClaimableFees> {
+  return bagsRequest<ClaimableFees>("GET", "/fee-share/claimable", undefined, {
+    tokenMint: params.tokenMint,
+    wallet: params.wallet,
+  });
+}
+
+export async function createClaimTransaction(params: {
+  tokenMint: string;
+  wallet: string;
+}): Promise<{ transaction: string } | string> {
+  return bagsRequest<{ transaction: string } | string>("POST", "/fee-share/claim", {
+    tokenMint: params.tokenMint,
+    wallet: params.wallet,
+  });
+}
+
 // SOL mint address (native wrapped SOL)
 export const SOL_MINT = "So11111111111111111111111111111111111111112";

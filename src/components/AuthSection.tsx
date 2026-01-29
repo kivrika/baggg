@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import LaunchCoinButton from "@/components/LaunchCoinButton";
 import WalletInfo from "@/components/WalletInfo";
+import FeeClaim from "@/components/FeeClaim";
 import { DBUser } from "@/types";
 import { getOrCreateWallet } from "@/lib/wallet";
 
@@ -70,13 +71,16 @@ function AuthSectionInner({ onUserSynced }: AuthSectionProps) {
     );
   }
 
-  if (currentUser?.token_mint) {
+  if (currentUser?.token_mint && walletAddress) {
     return (
       <>
         <WalletInfo />
-        <div className="max-w-md mx-auto mb-12 p-4 rounded-xl border border-green-500/30 bg-green-500/5 text-center">
-          <p className="text-green-400 font-medium">Your coin is live: {currentUser.token_symbol}</p>
-          <p className="text-xs text-gray-500 font-mono mt-1">{currentUser.token_mint}</p>
+        <div className="max-w-md mx-auto mb-12 p-4 rounded-xl border border-green-500/30 bg-green-500/5">
+          <div className="text-center">
+            <p className="text-green-400 font-medium">Your coin is live: {currentUser.token_symbol}</p>
+            <p className="text-xs text-gray-500 font-mono mt-1">{currentUser.token_mint}</p>
+          </div>
+          <FeeClaim tokenMint={currentUser.token_mint} walletAddress={walletAddress} />
         </div>
       </>
     );
