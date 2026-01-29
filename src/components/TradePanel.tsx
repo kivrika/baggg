@@ -3,10 +3,11 @@
 import { useState, useEffect } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { Connection, VersionedTransaction } from "@solana/web3.js";
+import bs58 from "bs58";
 import { getOrCreateWallet, getKeypair } from "@/lib/wallet";
 
 const LAMPORTS_PER_SOL = 1_000_000_000;
-const RPC_URL = "https://api.mainnet-beta.solana.com";
+const RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
 
 interface TradePanelProps {
   tokenMint: string;
@@ -27,14 +28,24 @@ export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) 
     setWalletAddress(wallet.publicKey);
   }, []);
 
-  const signAndSendTransaction = async (txBase64: string): Promise<string> => {
+  const signAndSendTransaction = async (txData: string): Promise<string> => {
     const keypair = getKeypair();
     if (!keypair) throw new Error("Wallet not found");
 
     const connection = new Connection(RPC_URL, "confirmed");
 
-    // Decode base64 transaction
-    const txBytes = Uint8Array.from(atob(txBase64), (c) => c.charCodeAt(0));
+    // Try base58 first (BagsAPI uses this), then fallback to base64
+    let txBytes: Uint8Array;
+    try {
+      txBytes = bs58.decode(txData);
+    } catch {
+      try {
+        txBytes = Uint8Array.from(atob(txData), (c) => c.charCodeAt(0));
+      } catch {
+        throw new Error("Could not decode transaction");
+      }
+    }
+
     const transaction = VersionedTransaction.deserialize(txBytes);
 
     // Sign the transaction
