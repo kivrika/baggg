@@ -22,10 +22,10 @@ export default function FeeClaim({ tokenMint, walletAddress }: FeeClaimProps) {
 
   const fetchSolPrice = useCallback(async () => {
     try {
-      const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd");
+      const res = await fetch("/api/sol-price");
       const data = await res.json();
-      if (data.solana?.usd) {
-        setSolPrice(data.solana.usd);
+      if (data.success && data.price) {
+        setSolPrice(data.price);
       }
     } catch (e) {
       console.error("Failed to fetch SOL price:", e);
