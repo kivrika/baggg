@@ -22,11 +22,31 @@ export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) 
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [quote, setQuote] = useState<{ outAmount: string; priceImpactPct: string } | null>(null);
+  const [tokenBalance, setTokenBalance] = useState<number | null>(null);
 
   useEffect(() => {
     const wallet = getOrCreateWallet();
     setWalletAddress(wallet.publicKey);
   }, []);
+
+  const fetchTokenBalance = async () => {
+    if (!walletAddress || !tokenMint) return;
+    try {
+      const res = await fetch(`/api/token-balance?wallet=${walletAddress}&tokenMint=${tokenMint}`);
+      const data = await res.json();
+      if (data.success) {
+        setTokenBalance(data.balance);
+      }
+    } catch (e) {
+      console.error("Failed to fetch token balance:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (walletAddress && tokenMint) {
+      fetchTokenBalance();
+    }
+  }, [walletAddress, tokenMint]);
 
   const signAndSendTransaction = async (txData: string): Promise<string> => {
     const keypair = getKeypair();
@@ -140,6 +160,8 @@ export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) 
       setStatus(`Trade successful! Tx: ${signature.slice(0, 8)}...`);
       setQuote(null);
       setAmount("");
+      // Refresh balance after trade
+      setTimeout(fetchTokenBalance, 2000);
     } catch (error) {
       setStatus(`Trade failed: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
@@ -157,9 +179,25 @@ export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) 
 
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6">
-      <h3 className="text-lg font-semibold mb-5">
+      <h3 className="text-lg font-semibold mb-3">
         Trade <span className="text-violet-400">{tokenSymbol}</span>
       </h3>
+
+      {/* Token Balance */}
+      <div className="mb-5 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+        <div className="flex justify-between items-center">
+          <span className="text-xs text-gray-500 uppercase tracking-wider">Your Balance</span>
+          <button
+            onClick={fetchTokenBalance}
+            className="text-xs text-gray-600 hover:text-gray-400 transition"
+          >
+            ↻
+          </button>
+        </div>
+        <p className="text-lg font-mono font-medium text-white mt-1">
+          {tokenBalance !== null ? tokenBalance.toLocaleString() : "—"} <span className="text-sm text-gray-500">{tokenSymbol}</span>
+        </p>
+      </div>
 
       {/* Buy / Sell Toggle */}
       <div className="flex gap-1 mb-5 p-1 rounded-xl bg-white/[0.03] border border-white/[0.04]">
