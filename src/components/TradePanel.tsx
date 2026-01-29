@@ -23,6 +23,7 @@ export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) 
   const [status, setStatus] = useState<string | null>(null);
   const [quote, setQuote] = useState<{ outAmount: string; priceImpactPct: string } | null>(null);
   const [tokenBalance, setTokenBalance] = useState<number | null>(null);
+  const [tokenDecimals, setTokenDecimals] = useState<number>(6);
 
   useEffect(() => {
     const wallet = getOrCreateWallet();
@@ -36,6 +37,7 @@ export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) 
       const data = await res.json();
       if (data.success) {
         setTokenBalance(data.balance);
+        setTokenDecimals(data.decimals || 6);
       }
     } catch (e) {
       console.error("Failed to fetch token balance:", e);
@@ -96,12 +98,13 @@ export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) 
     setLoading(true);
     setStatus(null);
     try {
-      const lamports = side === "buy"
+      // Convert to smallest unit: SOL uses lamports, tokens use their decimals
+      const inputAmount = side === "buy"
         ? String(Math.floor(parseFloat(amount) * LAMPORTS_PER_SOL))
-        : amount;
+        : String(Math.floor(parseFloat(amount) * Math.pow(10, tokenDecimals)));
 
       const res = await fetch(
-        `/api/trade/quote?tokenMint=${tokenMint}&amount=${lamports}&side=${side}`
+        `/api/trade/quote?tokenMint=${tokenMint}&amount=${inputAmount}&side=${side}`
       );
       const data = await res.json();
       if (data.success) {
@@ -122,12 +125,13 @@ export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) 
     setStatus("Creating transaction...");
 
     try {
-      const lamports = side === "buy"
+      // Convert to smallest unit: SOL uses lamports, tokens use their decimals
+      const inputAmount = side === "buy"
         ? String(Math.floor(parseFloat(amount) * LAMPORTS_PER_SOL))
-        : amount;
+        : String(Math.floor(parseFloat(amount) * Math.pow(10, tokenDecimals)));
 
       const quoteRes = await fetch(
-        `/api/trade/quote?tokenMint=${tokenMint}&amount=${lamports}&side=${side}`
+        `/api/trade/quote?tokenMint=${tokenMint}&amount=${inputAmount}&side=${side}`
       );
       const quoteData = await quoteRes.json();
       if (!quoteData.success) throw new Error(quoteData.error);
