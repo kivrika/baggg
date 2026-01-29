@@ -16,8 +16,21 @@ interface FeeClaimProps {
 export default function FeeClaim({ tokenMint, walletAddress }: FeeClaimProps) {
   const [claimable, setClaimable] = useState<number | null>(null);
   const [claimed, setClaimed] = useState<number | null>(null);
+  const [solPrice, setSolPrice] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+
+  const fetchSolPrice = useCallback(async () => {
+    try {
+      const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd");
+      const data = await res.json();
+      if (data.solana?.usd) {
+        setSolPrice(data.solana.usd);
+      }
+    } catch (e) {
+      console.error("Failed to fetch SOL price:", e);
+    }
+  }, []);
 
   const fetchClaimable = useCallback(async () => {
     if (!tokenMint || !walletAddress) return;
@@ -35,7 +48,14 @@ export default function FeeClaim({ tokenMint, walletAddress }: FeeClaimProps) {
 
   useEffect(() => {
     fetchClaimable();
-  }, [fetchClaimable]);
+    fetchSolPrice();
+  }, [fetchClaimable, fetchSolPrice]);
+
+  const formatUsd = (sol: number | null) => {
+    if (sol === null || solPrice === null) return "—";
+    const usd = sol * solPrice;
+    return `$${usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2)}`;
+  };
 
   const handleClaim = async () => {
     if (!tokenMint || !walletAddress || claimable === 0) return;
@@ -103,11 +123,17 @@ export default function FeeClaim({ tokenMint, walletAddress }: FeeClaimProps) {
           <p className="text-lg font-mono font-medium text-green-400">
             {claimable !== null ? claimable.toFixed(6) : "—"} <span className="text-xs text-gray-500">SOL</span>
           </p>
+          <p className="text-sm font-mono text-green-400/70">
+            {formatUsd(claimable)}
+          </p>
         </div>
         <div className="p-3 rounded-lg bg-white/[0.02]">
           <p className="text-xs text-gray-500 mb-1">Total Claimed</p>
           <p className="text-lg font-mono font-medium text-gray-400">
             {claimed !== null ? claimed.toFixed(6) : "—"} <span className="text-xs text-gray-500">SOL</span>
+          </p>
+          <p className="text-sm font-mono text-gray-500">
+            {formatUsd(claimed)}
           </p>
         </div>
       </div>
