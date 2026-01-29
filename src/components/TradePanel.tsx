@@ -225,9 +225,19 @@ export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) 
 
       {/* Amount Input */}
       <div className="mb-5">
-        <label className="block text-xs text-gray-500 mb-2 uppercase tracking-wider">
-          {side === "buy" ? "Amount (SOL)" : "Amount (tokens)"}
-        </label>
+        <div className="flex justify-between items-center mb-2">
+          <label className="text-xs text-gray-500 uppercase tracking-wider">
+            {side === "buy" ? "Amount (SOL)" : "Amount (tokens)"}
+          </label>
+          {side === "sell" && tokenBalance !== null && tokenBalance > 0 && (
+            <button
+              onClick={() => { setAmount(String(tokenBalance)); setQuote(null); }}
+              className="text-xs text-violet-400 hover:text-violet-300 font-medium transition"
+            >
+              MAX
+            </button>
+          )}
+        </div>
         <div className="relative">
           <input
             type="number"
