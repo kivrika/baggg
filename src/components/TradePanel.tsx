@@ -34,15 +34,23 @@ export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) 
 
     const connection = new Connection(RPC_URL, "confirmed");
 
+    console.log("Transaction data type:", typeof txData);
+    console.log("Transaction data length:", txData?.length);
+    console.log("Transaction data preview:", txData?.substring(0, 50));
+
     // Try base58 first (BagsAPI uses this), then fallback to base64
     let txBytes: Uint8Array;
     try {
       txBytes = bs58.decode(txData);
-    } catch {
+      console.log("Decoded as base58, bytes:", txBytes.length);
+    } catch (e1) {
+      console.log("Base58 failed:", e1);
       try {
         txBytes = Uint8Array.from(atob(txData), (c) => c.charCodeAt(0));
-      } catch {
-        throw new Error("Could not decode transaction");
+        console.log("Decoded as base64, bytes:", txBytes.length);
+      } catch (e2) {
+        console.log("Base64 failed:", e2);
+        throw new Error(`Could not decode transaction (len=${txData?.length}, start=${txData?.substring(0, 30)}...)`);
       }
     }
 
@@ -113,10 +121,25 @@ export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) 
         }),
       });
       const swapData = await swapRes.json();
+      console.log("Swap response:", JSON.stringify(swapData, null, 2));
       if (!swapData.success) throw new Error(swapData.error);
 
+      // Extract transaction string - handle both direct string and object formats
+      let txString: string;
+      if (typeof swapData.transaction === 'string') {
+        txString = swapData.transaction;
+      } else if (swapData.transaction && typeof swapData.transaction === 'object') {
+        txString = swapData.transaction.transaction || swapData.transaction.data;
+      } else {
+        throw new Error("No transaction in response: " + JSON.stringify(swapData).substring(0, 200));
+      }
+
+      if (!txString) {
+        throw new Error("Transaction string is empty");
+      }
+
       setStatus("Signing transaction...");
-      const signature = await signAndSendTransaction(swapData.transaction);
+      const signature = await signAndSendTransaction(txString);
 
       setStatus(`Trade successful! Tx: ${signature.slice(0, 8)}...`);
       setQuote(null);
