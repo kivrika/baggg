@@ -124,13 +124,9 @@ export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) 
       console.log("Swap response:", JSON.stringify(swapData, null, 2));
       if (!swapData.success) throw new Error(swapData.error);
 
-      // Extract transaction string - handle both direct string and object formats
-      let txString: string;
-      if (typeof swapData.transaction === 'string') {
-        txString = swapData.transaction;
-      } else if (swapData.transaction && typeof swapData.transaction === 'object') {
-        txString = swapData.transaction.transaction || swapData.transaction.data;
-      } else {
+      // Extract transaction string - API returns swapTransaction
+      const txString = swapData.swapTransaction || swapData.transaction;
+      if (!txString || typeof txString !== 'string') {
         throw new Error("No transaction in response: " + JSON.stringify(swapData).substring(0, 200));
       }
 
