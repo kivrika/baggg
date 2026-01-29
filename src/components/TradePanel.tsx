@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { usePrivy } from "@privy-io/react-auth";
-import { useWallets, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
+import { Connection, VersionedTransaction } from "@solana/web3.js";
+import { getOrCreateWallet, getKeypair } from "@/lib/wallet";
 
 const LAMPORTS_PER_SOL = 1_000_000_000;
+const RPC_URL = "https://api.mainnet-beta.solana.com";
 
 interface TradePanelProps {
   tokenMint: string;
@@ -13,15 +15,42 @@ interface TradePanelProps {
 
 export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) {
   const { authenticated } = usePrivy();
-  const { wallets } = useWallets();
-  const { signAndSendTransaction } = useSignAndSendTransaction();
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [quote, setQuote] = useState<{ outAmount: string; priceImpactPct: string } | null>(null);
 
-  const wallet = wallets[0];
+  useEffect(() => {
+    const wallet = getOrCreateWallet();
+    setWalletAddress(wallet.publicKey);
+  }, []);
+
+  const signAndSendTransaction = async (txBase64: string): Promise<string> => {
+    const keypair = getKeypair();
+    if (!keypair) throw new Error("Wallet not found");
+
+    const connection = new Connection(RPC_URL, "confirmed");
+
+    // Decode base64 transaction
+    const txBytes = Uint8Array.from(atob(txBase64), (c) => c.charCodeAt(0));
+    const transaction = VersionedTransaction.deserialize(txBytes);
+
+    // Sign the transaction
+    transaction.sign([keypair]);
+
+    // Send the transaction
+    const signature = await connection.sendTransaction(transaction, {
+      skipPreflight: false,
+      preflightCommitment: "confirmed",
+    });
+
+    // Wait for confirmation
+    await connection.confirmTransaction(signature, "confirmed");
+
+    return signature;
+  };
 
   const fetchQuote = async () => {
     if (!amount || parseFloat(amount) <= 0) return;
@@ -49,7 +78,7 @@ export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) 
   };
 
   const executeTrade = async () => {
-    if (!wallet || !quote) return;
+    if (!walletAddress || !quote) return;
     setLoading(true);
     setStatus("Creating transaction...");
 
@@ -69,21 +98,16 @@ export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           quoteResponse: quoteData.quote,
-          userPublicKey: wallet.address,
+          userPublicKey: walletAddress,
         }),
       });
       const swapData = await swapRes.json();
       if (!swapData.success) throw new Error(swapData.error);
 
       setStatus("Signing transaction...");
-      const txBytes = Uint8Array.from(atob(swapData.transaction), (c) => c.charCodeAt(0));
+      const signature = await signAndSendTransaction(swapData.transaction);
 
-      const { signature } = await signAndSendTransaction({
-        wallet,
-        transaction: txBytes,
-      });
-
-      setStatus(`Trade successful! Tx: ${String(signature).slice(0, 8)}...`);
+      setStatus(`Trade successful! Tx: ${signature.slice(0, 8)}...`);
       setQuote(null);
       setAmount("");
     } catch (error) {

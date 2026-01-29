@@ -36,6 +36,7 @@ async function bagsRequest<T>(
   });
 
   const data = await res.json();
+  console.log(`BagsAPI ${method} ${path} - FULL RESPONSE:`, JSON.stringify(data, null, 2));
   if (!data.success || !data.response) {
     console.error("BagsAPI error response:", JSON.stringify(data, null, 2));
     throw new Error(data.error || data.message || `BagsAPI error: ${res.status} - ${JSON.stringify(data)}`);
@@ -69,12 +70,14 @@ export async function createFeeShareConfig(params: {
   claimersArray: string[];
   basisPointsArray: number[];
 }): Promise<BagsFeeShareConfig> {
-  return bagsRequest<BagsFeeShareConfig>("POST", "/fee-share/config", {
+  const result = await bagsRequest<BagsFeeShareConfig>("POST", "/fee-share/config", {
     payer: params.payer,
     baseMint: params.baseMint,
     claimersArray: params.claimersArray,
     basisPointsArray: params.basisPointsArray,
   });
+  console.log("Fee share config RAW response:", JSON.stringify(result, null, 2));
+  return result;
 }
 
 export async function createLaunchTransaction(params: {
@@ -83,16 +86,16 @@ export async function createLaunchTransaction(params: {
   initialBuyLamports?: number;
   configKey: string;
   metadataUrl: string;
-}): Promise<{ transaction: string }> {
-  return bagsRequest<{ transaction: string }>(
+}): Promise<string | { transaction: string }> {
+  return bagsRequest<string | { transaction: string }>(
     "POST",
     "/token-launch/create-launch-transaction",
     {
       tokenMint: params.tokenMint,
-      launchWallet: params.launchWallet,
+      wallet: params.launchWallet,
       initialBuyLamports: params.initialBuyLamports || 0,
       configKey: params.configKey,
-      metadataUrl: params.metadataUrl,
+      ipfs: params.metadataUrl,
     }
   );
 }

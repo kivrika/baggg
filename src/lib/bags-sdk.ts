@@ -1,102 +1,140 @@
-import { BagsSDK } from "@bagsfm/bags-sdk";
-import { Connection, PublicKey, VersionedTransaction } from "@solana/web3.js";
+import { createTokenInfo, createFeeShareConfig, createLaunchTransaction } from "./bags";
 
-const RPC_URL = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
-
-function getSDK() {
-  const apiKey = process.env.BAGS_API_KEY?.trim();
-  if (!apiKey) throw new Error("BAGS_API_KEY is not set");
-
-  const connection = new Connection(RPC_URL, "confirmed");
-  return new BagsSDK(apiKey, connection, "confirmed");
-}
-
-// Helper function to retry with delay
-async function retryWithDelay<T>(
-  fn: () => Promise<T>,
-  retries: number = 3,
-  delay: number = 2000
-): Promise<T> {
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await fn();
-    } catch (error) {
-      console.log(`Attempt ${i + 1} failed:`, error);
-      if (i === retries - 1) throw error;
-      console.log(`Waiting ${delay}ms before retry...`);
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
-  throw new Error("All retries failed");
-}
-
-export interface LaunchTokenResult {
+export interface PrepareTokenResult {
   tokenMint: string;
   tokenMetadata: string;
+  configKey: string;
   configTransactions: string[];
+}
+
+export interface FinalizeTokenResult {
   launchTransaction: string;
 }
 
-export async function launchTokenWithSDK(params: {
+// Step 1: Prepare token - create token info and fee config
+export async function prepareToken(params: {
   name: string;
   symbol: string;
   description: string;
   imageUrl: string;
   twitter?: string;
   creatorWallet: string;
-}): Promise<LaunchTokenResult> {
-  const sdk = getSDK();
-  const creatorPubkey = new PublicKey(params.creatorWallet);
-
-  // Step 1: Create token metadata
-  console.log("SDK Step 1: Creating token info...");
+}): Promise<PrepareTokenResult> {
+  // Create token metadata
+  console.log("Step 1: Creating token info...");
   const twitterUrl = params.twitter ? `https://x.com/${params.twitter}` : undefined;
-  const tokenInfo = await sdk.tokenLaunch.createTokenInfoAndMetadata({
+
+  const tokenInfo = await createTokenInfo({
     name: params.name,
     symbol: params.symbol,
     description: params.description,
     imageUrl: params.imageUrl,
     twitter: twitterUrl,
   });
-  console.log("SDK Step 1 SUCCESS:", tokenInfo.tokenMint);
+  console.log("Step 1 SUCCESS:", tokenInfo.tokenMint);
 
-  // Wait a bit for the token to propagate in Bags system
-  console.log("Waiting for token to propagate...");
+  // Wait for token to propagate
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
-  // Step 2: Create fee share config with retry
-  console.log("SDK Step 2: Creating fee share config...");
-  const feeConfig = await retryWithDelay(async () => {
-    return await sdk.config.createBagsFeeShareConfig({
-      payer: creatorPubkey,
-      baseMint: new PublicKey(tokenInfo.tokenMint),
-      feeClaimers: [{ user: creatorPubkey, userBps: 10000 }],
-    });
-  }, 3, 3000);
-  console.log("SDK Step 2 SUCCESS:", feeConfig.meteoraConfigKey.toBase58());
+  // Create fee share config
+  console.log("Step 2: Creating fee share config...");
+  console.log("  payer:", params.creatorWallet);
+  console.log("  baseMint:", tokenInfo.tokenMint);
 
-  // Serialize config transactions
-  const configTxs = feeConfig.transactions.map((tx: VersionedTransaction) =>
-    Buffer.from(tx.serialize()).toString("base64")
-  );
-
-  // Step 3: Create launch transaction
-  console.log("SDK Step 3: Creating launch transaction...");
-  const launchTx = await sdk.tokenLaunch.createLaunchTransaction({
-    tokenMint: new PublicKey(tokenInfo.tokenMint),
-    launchWallet: creatorPubkey,
-    initialBuyLamports: 0,
-    configKey: feeConfig.meteoraConfigKey,
-    metadataUrl: tokenInfo.tokenMetadata,
+  const feeConfig = await createFeeShareConfig({
+    payer: params.creatorWallet,
+    baseMint: tokenInfo.tokenMint,
+    claimersArray: [params.creatorWallet],
+    basisPointsArray: [10000],
   });
-  console.log("SDK Step 3 SUCCESS");
 
-  const launchTxBase64 = Buffer.from(launchTx.serialize()).toString("base64");
+  console.log("Step 2 SUCCESS - Full response:", JSON.stringify(feeConfig, null, 2));
+  console.log("  All keys in response:", Object.keys(feeConfig));
+
+  // Cast to any to check different possible field names
+  const feeConfigAny = feeConfig as unknown as Record<string, unknown>;
+
+  // Try different possible field names for config key
+  const configKey = feeConfigAny.meteoraConfigKey
+    || feeConfigAny.configKey
+    || feeConfigAny.config_key
+    || feeConfigAny.key;
+
+  // Get transactions - they come as objects with {transaction, blockhash}
+  const rawTransactions = feeConfigAny.transactions || [];
+
+  console.log("  Found configKey:", configKey);
+  console.log("  Found raw transactions count:", Array.isArray(rawTransactions) ? rawTransactions.length : 0);
+
+  if (!configKey) {
+    console.error("WARNING: No config key found in response!");
+    console.error("Full feeConfig object:", JSON.stringify(feeConfig, null, 2));
+    throw new Error("Fee share config did not return a config key. Response: " + JSON.stringify(feeConfig));
+  }
+
+  // Extract transaction strings from objects
+  let configTransactions: string[] = [];
+  if (Array.isArray(rawTransactions)) {
+    configTransactions = rawTransactions.map((tx: unknown) => {
+      if (typeof tx === 'string') return tx;
+      if (tx && typeof tx === 'object' && 'transaction' in tx) {
+        return (tx as { transaction: string }).transaction;
+      }
+      return null;
+    }).filter((tx): tx is string => tx !== null);
+  }
+
+  console.log("  Extracted transaction strings:", configTransactions.length);
 
   return {
     tokenMint: tokenInfo.tokenMint,
     tokenMetadata: tokenInfo.tokenMetadata,
-    configTransactions: configTxs,
-    launchTransaction: launchTxBase64,
+    configKey: configKey as string,
+    configTransactions,
+  };
+}
+
+// Step 2: Finalize token - create launch transaction (call after config tx confirmed)
+export async function finalizeToken(params: {
+  tokenMint: string;
+  tokenMetadata: string;
+  configKey: string;
+  creatorWallet: string;
+}): Promise<FinalizeTokenResult> {
+  console.log("Step 3: Creating launch transaction...");
+  console.log("  tokenMint:", params.tokenMint);
+  console.log("  configKey:", params.configKey);
+  console.log("  metadataUrl:", params.tokenMetadata);
+  console.log("  wallet:", params.creatorWallet);
+
+  if (!params.configKey || params.configKey === "undefined") {
+    throw new Error("Config key is missing or invalid");
+  }
+
+  const launchTx = await createLaunchTransaction({
+    tokenMint: params.tokenMint,
+    launchWallet: params.creatorWallet,
+    initialBuyLamports: 0,
+    configKey: params.configKey,
+    metadataUrl: params.tokenMetadata,
+  });
+  console.log("Step 3 SUCCESS - launchTx type:", typeof launchTx);
+  console.log("  launchTx preview:", String(launchTx).substring(0, 100));
+
+  // Handle both cases: API returns string directly OR { transaction: string }
+  let transactionString: string;
+  if (typeof launchTx === 'string') {
+    transactionString = launchTx;
+    console.log("  launchTx is direct string, length:", transactionString.length);
+  } else if (launchTx && typeof launchTx === 'object' && 'transaction' in launchTx) {
+    transactionString = (launchTx as { transaction: string }).transaction;
+    console.log("  Extracted from object, length:", transactionString.length);
+  } else {
+    console.error("ERROR: Unexpected launchTx format!");
+    throw new Error("BagsAPI returned unexpected format: " + JSON.stringify(launchTx).substring(0, 200));
+  }
+
+  return {
+    launchTransaction: transactionString,
   };
 }

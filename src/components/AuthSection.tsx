@@ -2,10 +2,10 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import { usePrivy } from "@privy-io/react-auth";
-import { useWallets } from "@privy-io/react-auth/solana";
 import LaunchCoinButton from "@/components/LaunchCoinButton";
 import WalletInfo from "@/components/WalletInfo";
 import { DBUser } from "@/types";
+import { getOrCreateWallet } from "@/lib/wallet";
 
 interface AuthSectionProps {
   onUserSynced?: () => void;
@@ -13,11 +13,15 @@ interface AuthSectionProps {
 
 function AuthSectionInner({ onUserSynced }: AuthSectionProps) {
   const { ready, authenticated, user } = usePrivy();
-  const { wallets } = useWallets();
   const [currentUser, setCurrentUser] = useState<DBUser | null>(null);
   const [synced, setSynced] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
 
-  const wallet = wallets[0];
+  // Initialize wallet
+  useEffect(() => {
+    const wallet = getOrCreateWallet();
+    setWalletAddress(wallet.publicKey);
+  }, []);
 
   const syncUser = useCallback(async () => {
     if (!user?.twitter?.username) return;
@@ -31,7 +35,7 @@ function AuthSectionInner({ onUserSynced }: AuthSectionProps) {
           twitterUsername: user.twitter.username,
           twitterName: user.twitter.name,
           twitterPfp: user.twitter.profilePictureUrl,
-          walletAddress: wallet?.address,
+          walletAddress: walletAddress,
         }),
       });
       const data = await res.json();
@@ -41,7 +45,7 @@ function AuthSectionInner({ onUserSynced }: AuthSectionProps) {
     } catch (error) {
       console.error("Failed to sync user:", error);
     }
-  }, [user?.id, user?.twitter?.username, user?.twitter?.name, user?.twitter?.profilePictureUrl, wallet?.address, onUserSynced]);
+  }, [user?.id, user?.twitter?.username, user?.twitter?.name, user?.twitter?.profilePictureUrl, walletAddress, onUserSynced]);
 
   useEffect(() => {
     if (ready && authenticated && user?.twitter && !synced) {

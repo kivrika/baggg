@@ -20,6 +20,7 @@ export interface BagsTokenInfo {
 
 export interface BagsFeeShareConfig {
   meteoraConfigKey: string;
+  transactions?: string[];
 }
 
 export interface BagsFeeClaimer {

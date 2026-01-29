@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserByPrivyId, updateUserToken } from "@/lib/db";
-import { launchTokenWithSDK } from "@/lib/bags-sdk";
+import { prepareToken, finalizeToken } from "@/lib/bags-sdk";
 
-// Launch a new coin for a user via BagsSDK
+// Step 1: Prepare token (create token info + fee config)
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { privyId, walletAddress } = body;
+    const { privyId, walletAddress, step, tokenMint, tokenMetadata, configKey } = body;
 
     if (!privyId || !walletAddress) {
       return NextResponse.json({ error: "Missing privyId or walletAddress" }, { status: 400 });
@@ -21,18 +21,58 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User already has a coin", tokenMint: user.token_mint }, { status: 409 });
     }
 
+    // Step 2: Finalize (create launch transaction)
+    if (step === "finalize") {
+      if (!tokenMint || !tokenMetadata || !configKey) {
+        return NextResponse.json({ error: "Missing token data for finalize" }, { status: 400 });
+      }
+
+      const result = await finalizeToken({
+        tokenMint,
+        tokenMetadata,
+        configKey,
+        creatorWallet: walletAddress,
+      });
+
+      return NextResponse.json({
+        success: true,
+        step: "finalize",
+        launchTransaction: result.launchTransaction,
+        tokenMint,
+      });
+    }
+
+    // Step 3: Confirm (save to DB after successful launch)
+    if (step === "confirm") {
+      if (!tokenMint) {
+        return NextResponse.json({ error: "Missing tokenMint for confirm" }, { status: 400 });
+      }
+
+      const tokenName = user.twitter_name || user.twitter_username;
+      const tokenSymbol = user.twitter_username.toUpperCase().slice(0, 8);
+
+      await updateUserToken(privyId, tokenMint, tokenName, tokenSymbol);
+
+      return NextResponse.json({
+        success: true,
+        step: "confirm",
+        tokenMint,
+        tokenName,
+        tokenSymbol,
+      });
+    }
+
+    // Step 1: Prepare (create token + config)
     const tokenName = user.twitter_name || user.twitter_username;
     const tokenSymbol = user.twitter_username.toUpperCase().slice(0, 8);
     const description = `Social token for @${user.twitter_username} on FriendBags`;
 
-    // Convert Twitter PFP to 400x400 version
     let imageUrl = user.twitter_pfp || "https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png";
     imageUrl = imageUrl.replace(/_normal\.(jpg|png|gif|webp)/, "_400x400.$1")
                        .replace(/_bigger\.(jpg|png|gif|webp)/, "_400x400.$1")
                        .replace(/_mini\.(jpg|png|gif|webp)/, "_400x400.$1");
 
-    // Use SDK to launch token
-    const result = await launchTokenWithSDK({
+    const result = await prepareToken({
       name: tokenName,
       symbol: tokenSymbol,
       description,
@@ -41,14 +81,14 @@ export async function POST(req: NextRequest) {
       creatorWallet: walletAddress,
     });
 
-    // Update DB with token info
-    await updateUserToken(privyId, result.tokenMint, tokenName, tokenSymbol);
-
+    // Don't save to DB yet - only after successful launch
     return NextResponse.json({
       success: true,
+      step: "prepare",
       tokenMint: result.tokenMint,
+      tokenMetadata: result.tokenMetadata,
+      configKey: result.configKey,
       configTransactions: result.configTransactions,
-      launchTransaction: result.launchTransaction,
       tokenName,
       tokenSymbol,
     });

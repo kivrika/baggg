@@ -1,61 +1,97 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useWallets } from "@privy-io/react-auth/solana";
-import { Connection, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
-
-const RPC_URL = "https://api.mainnet-beta.solana.com";
+import { useState, useEffect, useCallback } from "react";
+import { getOrCreateWallet, StoredWallet } from "@/lib/wallet";
 
 export default function WalletInfo() {
-  const { wallets } = useWallets();
+  const [wallet, setWallet] = useState<StoredWallet | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [showPrivateKey, setShowPrivateKey] = useState(false);
+  const [keyCopied, setKeyCopied] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const wallet = wallets[0];
+  // Initialize wallet on mount
+  useEffect(() => {
+    const w = getOrCreateWallet();
+    setWallet(w);
+  }, []);
+
+  const fetchBalance = useCallback(async () => {
+    if (!wallet?.publicKey) return;
+
+    try {
+      const res = await fetch(`/api/balance?address=${wallet.publicKey}`);
+      const data = await res.json();
+      if (data.success) {
+        setBalance(data.balance);
+      } else {
+        setBalance(0);
+      }
+    } catch (error) {
+      console.error("Balance fetch error:", error);
+      setBalance(0);
+    }
+  }, [wallet?.publicKey]);
 
   // Fetch SOL balance
   useEffect(() => {
-    if (!wallet?.address) return;
-
-    const fetchBalance = async () => {
-      try {
-        const connection = new Connection(RPC_URL, "confirmed");
-        const pubkey = new PublicKey(wallet.address);
-        const lamports = await connection.getBalance(pubkey);
-        setBalance(lamports / LAMPORTS_PER_SOL);
-      } catch (error) {
-        console.error("Failed to fetch balance:", error);
-        setBalance(0);
-      }
-    };
+    if (!wallet?.publicKey) return;
 
     fetchBalance();
-    const interval = setInterval(fetchBalance, 30000);
+    const interval = setInterval(fetchBalance, 15000);
     return () => clearInterval(interval);
-  }, [wallet?.address]);
+  }, [wallet?.publicKey, fetchBalance]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchBalance();
+    setRefreshing(false);
+  };
 
   const copyAddress = () => {
-    if (!wallet?.address) return;
-    navigator.clipboard.writeText(wallet.address);
+    if (!wallet?.publicKey) return;
+    navigator.clipboard.writeText(wallet.publicKey);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const copyPrivateKey = () => {
+    if (!wallet?.secretKey) return;
+    navigator.clipboard.writeText(wallet.secretKey);
+    setKeyCopied(true);
+    setTimeout(() => setKeyCopied(false), 2000);
+  };
+
   const handleExportWallet = () => {
-    // Privy's exportWallet only works for Ethereum wallets
-    // For Solana, redirect to Privy Home where users can export
-    window.open("https://home.privy.io/settings/wallets", "_blank");
+    setShowExportModal(true);
+    setShowPrivateKey(false);
+  };
+
+  const closeModal = () => {
+    setShowExportModal(false);
+    setShowPrivateKey(false);
+    setKeyCopied(false);
   };
 
   if (!wallet) return null;
 
-  const shortAddress = `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`;
+  const shortAddress = `${wallet.publicKey.slice(0, 6)}...${wallet.publicKey.slice(-4)}`;
 
   return (
     <div className="max-w-md mx-auto mb-6 p-4 rounded-xl border border-white/10 bg-white/[0.02]">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-medium text-gray-300">Your Solana Wallet</h3>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-50"
+            title="Refresh balance"
+          >
+            {refreshing ? "..." : "↻"}
+          </button>
           <span className={`text-xs px-2 py-0.5 rounded-full ${
             balance !== null && balance > 0
               ? "bg-green-500/20 text-green-400"
@@ -86,7 +122,7 @@ export default function WalletInfo() {
           Show full address
         </summary>
         <div className="mt-2 p-2 bg-black/30 rounded-lg">
-          <p className="text-xs font-mono text-gray-400 break-all select-all">{wallet.address}</p>
+          <p className="text-xs font-mono text-gray-400 break-all select-all">{wallet.publicKey}</p>
         </div>
       </details>
 
@@ -106,10 +142,67 @@ export default function WalletInfo() {
         </button>
       </div>
 
+      {/* Export Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1a1a] rounded-xl border border-white/10 p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold text-white mb-3">Export Private Key</h3>
+
+            {!showPrivateKey ? (
+              <>
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 mb-4">
+                  <p className="text-sm text-red-400 font-medium">Warning!</p>
+                  <p className="text-xs text-red-300 mt-1">
+                    Never share your private key with anyone. Anyone with this key can access your funds.
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={closeModal}
+                    className="flex-1 py-2 px-4 rounded-lg bg-white/5 hover:bg-white/10 text-sm text-gray-300 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => setShowPrivateKey(true)}
+                    className="flex-1 py-2 px-4 rounded-lg bg-red-500 hover:bg-red-600 text-sm text-white font-medium transition"
+                  >
+                    Show Private Key
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="p-3 rounded-lg bg-black/50 border border-white/10 mb-4">
+                  <p className="text-xs text-gray-500 mb-2">Your Private Key (Base58):</p>
+                  <p className="text-xs font-mono text-white break-all select-all">
+                    {wallet.secretKey}
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={closeModal}
+                    className="flex-1 py-2 px-4 rounded-lg bg-white/5 hover:bg-white/10 text-sm text-gray-300 transition"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={copyPrivateKey}
+                    className="flex-1 py-2 px-4 rounded-lg bg-violet-500 hover:bg-violet-600 text-sm text-white font-medium transition"
+                  >
+                    {keyCopied ? "Copied!" : "Copy Key"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Solscan Link */}
       <div className="mt-3 text-center">
         <a
-          href={`https://solscan.io/account/${wallet.address}`}
+          href={`https://solscan.io/account/${wallet.publicKey}`}
           target="_blank"
           rel="noopener noreferrer"
           className="text-xs text-violet-400 hover:text-violet-300"
