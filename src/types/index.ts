@@ -72,3 +72,28 @@ export interface UserWithCoin {
   tokenName: string | null;
   tokenSymbol: string | null;
 }
+
+// ─── Chat Types ─────────────────────────────────────────────────
+export interface ChatSettings {
+  id: number;
+  user_id: number;
+  min_token_amount: string; // NUMERIC comes as string from Postgres
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Message {
+  id: number;
+  sender_id: number;
+  recipient_id: number;
+  content: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface MessageWithSender extends Message {
+  sender_username: string;
+  sender_name: string | null;
+  sender_pfp: string | null;
+}

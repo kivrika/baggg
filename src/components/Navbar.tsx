@@ -2,6 +2,7 @@
 
 import { usePrivy } from "@privy-io/react-auth";
 import Link from "next/link";
+import Image from "next/image";
 
 export default function Navbar() {
   const { ready, authenticated, user, login, logout } = usePrivy();
@@ -13,9 +14,13 @@ export default function Navbar() {
     <nav className="sticky top-0 z-50 border-b border-white/[0.06] bg-black/70 backdrop-blur-xl">
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-bold text-sm group-hover:scale-105 transition-transform">
-            F
-          </div>
+          <Image
+            src="/logo.png"
+            alt="FriendBags"
+            width={36}
+            height={36}
+            className="rounded-lg group-hover:scale-105 transition-transform"
+          />
           <span className="text-lg font-bold text-white">
             Friend<span className="text-violet-400">Bags</span>
           </span>

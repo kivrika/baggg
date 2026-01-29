@@ -150,30 +150,118 @@ export async function getTokenLifetimeFees(tokenMint: string) {
 
 // ─── Fee Claiming ───────────────────────────────────────────────
 
-export interface ClaimableFees {
-  claimable: string;
-  claimed: string;
-  total: string;
+// Raw API response format
+export interface ClaimablePositionRaw {
+  programId: string;
+  isCustomFeeVault: boolean;
+  user: string;
+  baseMint: string;  // This is the tokenMint
+  quoteMint: string;
+  isMigrated: boolean;
+  claimerIndex: number;
+  userBps: number;
+  virtualPool: string;
+  virtualPoolClaimableLamportsUserShare: number;
+  totalClaimableLamportsUserShare: number;
+  // DAMM v2 fields (optional)
+  dammV2Position?: string;
+  dammV2Pool?: string;
+  dammV2PositionNftAccount?: string;
+  dammV2ClaimableLamportsUserShare?: number;
 }
 
-export async function getClaimableFees(params: {
+// Normalized format for our app
+export interface ClaimablePosition {
   tokenMint: string;
-  wallet: string;
-}): Promise<ClaimableFees> {
-  return bagsRequest<ClaimableFees>("GET", "/fee-share/claimable", undefined, {
-    tokenMint: params.tokenMint,
-    wallet: params.wallet,
-  });
+  claimableLamports: number;
+  virtualPoolAddress: string;
+  isCustomFeeVault: boolean;
+  programId: string;
+  baseMint: string;
+  quoteMint: string;
+  dammV2Position?: string;
+  dammV2Pool?: string;
+  dammV2PositionNftAccount?: string;
+}
+
+export async function getClaimablePositions(wallet: string): Promise<ClaimablePosition[]> {
+  const rawPositions = await bagsRequest<ClaimablePositionRaw[]>(
+    "GET",
+    "/token-launch/claimable-positions",
+    undefined,
+    { wallet }
+  );
+
+  // Normalize the response
+  return rawPositions.map(p => ({
+    tokenMint: p.baseMint,
+    claimableLamports: p.totalClaimableLamportsUserShare || p.virtualPoolClaimableLamportsUserShare || 0,
+    virtualPoolAddress: p.virtualPool,
+    isCustomFeeVault: p.isCustomFeeVault,
+    programId: p.programId,
+    baseMint: p.baseMint,
+    quoteMint: p.quoteMint,
+    dammV2Position: p.dammV2Position,
+    dammV2Pool: p.dammV2Pool,
+    dammV2PositionNftAccount: p.dammV2PositionNftAccount,
+  }));
+}
+
+interface ClaimTxResponse {
+  tx: string;
+  blockhash: {
+    blockhash: string;
+    lastValidBlockHeight: number;
+  };
 }
 
 export async function createClaimTransaction(params: {
   tokenMint: string;
   wallet: string;
-}): Promise<{ transaction: string } | string> {
-  return bagsRequest<{ transaction: string } | string>("POST", "/fee-share/claim", {
+  virtualPoolAddress?: string;
+  isCustomFeeVault?: boolean;
+  programId?: string;
+  baseMint?: string;
+  quoteMint?: string;
+  dammV2Position?: string;
+  dammV2Pool?: string;
+  dammV2PositionNftAccount?: string;
+}): Promise<{ transactions: string[] }> {
+  const response = await bagsRequest<ClaimTxResponse[]>("POST", "/token-launch/claim-txs/v2", {
+    feeClaimer: params.wallet,
     tokenMint: params.tokenMint,
-    wallet: params.wallet,
+    virtualPoolAddress: params.virtualPoolAddress,
+    isCustomFeeVault: params.isCustomFeeVault,
+    feeShareProgramId: params.programId,
+    tokenAMint: params.baseMint,
+    tokenBMint: params.quoteMint,
+    dammV2Position: params.dammV2Position,
+    dammV2Pool: params.dammV2Pool,
+    dammV2PositionNftAccount: params.dammV2PositionNftAccount,
+    claimVirtualPoolFees: !!params.virtualPoolAddress,
+    claimDammV2Fees: !!params.dammV2Position,
   });
+
+  // Extract transaction strings from response array
+  const transactions = response.map(r => r.tx);
+  return { transactions };
+}
+
+// ─── Claim Stats ────────────────────────────────────────────────
+
+interface ClaimStatsResponse {
+  wallet: string;
+  tokenMint: string;
+  totalClaimed: string;
+}
+
+export async function getClaimStats(tokenMint: string): Promise<ClaimStatsResponse[]> {
+  return bagsRequest<ClaimStatsResponse[]>(
+    "GET",
+    "/token-launch/claim-stats",
+    undefined,
+    { tokenMint }
+  );
 }
 
 // SOL mint address (native wrapped SOL)

@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { DBUser } from "@/types";
 
-export default function UserCard({ user }: { user: DBUser }) {
+interface UserCardProps {
+  user: DBUser;
+  marketCap?: string | null;
+}
+
+export default function UserCard({ user, marketCap }: UserCardProps) {
   const hasCoin = !!user.token_mint;
 
   return (
@@ -44,9 +49,15 @@ export default function UserCard({ user }: { user: DBUser }) {
               <span className="text-xs font-semibold font-mono text-violet-300 bg-violet-500/10 border border-violet-500/20 px-2.5 py-1 rounded-full">
                 {user.token_symbol}
               </span>
-              <span className="text-[11px] text-gray-600 font-mono">
-                {user.token_mint!.slice(0, 4)}...{user.token_mint!.slice(-4)}
-              </span>
+              {marketCap ? (
+                <span className="text-xs font-semibold text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full">
+                  {marketCap}
+                </span>
+              ) : (
+                <span className="text-[11px] text-gray-600 font-mono">
+                  {user.token_mint!.slice(0, 4)}...{user.token_mint!.slice(-4)}
+                </span>
+              )}
             </>
           ) : (
             <span className="text-xs text-gray-700 italic">No coin yet</span>

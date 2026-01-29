@@ -10,15 +10,27 @@ const LAMPORTS_PER_SOL = 1_000_000_000;
 
 interface FeeClaimProps {
   tokenMint: string;
-  walletAddress: string;
+  walletAddress: string;  // Fee claimer wallet (from DB)
+  signerWallet?: string;  // Current wallet for signing (from localStorage)
 }
 
-export default function FeeClaim({ tokenMint, walletAddress }: FeeClaimProps) {
+export default function FeeClaim({ tokenMint, walletAddress, signerWallet }: FeeClaimProps) {
   const [claimable, setClaimable] = useState<number | null>(null);
   const [claimed, setClaimed] = useState<number | null>(null);
   const [solPrice, setSolPrice] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+
+  // Check if signer wallet matches fee claimer wallet
+  const canClaim = signerWallet === walletAddress;
+
+  // Debug: log wallet addresses on mount
+  useEffect(() => {
+    console.log("FeeClaim mounted:");
+    console.log("  walletAddress (fee claimer from DB):", walletAddress);
+    console.log("  signerWallet (localStorage):", signerWallet);
+    console.log("  canClaim:", canClaim);
+  }, [walletAddress, signerWallet, canClaim]);
 
   const fetchSolPrice = useCallback(async () => {
     try {
@@ -59,6 +71,10 @@ export default function FeeClaim({ tokenMint, walletAddress }: FeeClaimProps) {
 
   const handleClaim = async () => {
     if (!tokenMint || !walletAddress || claimable === 0) return;
+    if (!canClaim) {
+      setStatus("Wallet mismatch - cannot claim from different wallet");
+      return;
+    }
     setLoading(true);
     setStatus("Creating claim transaction...");
 
@@ -71,19 +87,47 @@ export default function FeeClaim({ tokenMint, walletAddress }: FeeClaimProps) {
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
 
+      // Get transaction string - API returns array of transactions
+      const txString = data.transaction || (data.transactions && data.transactions[0]);
+      if (!txString) {
+        throw new Error("No transaction returned from API");
+      }
+
+      console.log("Transaction string length:", txString.length);
+      console.log("Transaction preview:", txString.substring(0, 50));
+
       setStatus("Signing transaction...");
 
       const keypair = getKeypair();
       if (!keypair) throw new Error("Wallet not found");
 
+      // Verify keypair matches the fee claimer wallet
+      const keypairPubkey = keypair.publicKey.toBase58();
+      console.log("Keypair pubkey:", keypairPubkey);
+      console.log("Expected fee claimer:", walletAddress);
+
+      if (keypairPubkey !== walletAddress) {
+        throw new Error(`Wallet mismatch! Your wallet: ${keypairPubkey.slice(0,8)}... Fee claimer: ${walletAddress.slice(0,8)}...`);
+      }
+
       const connection = new Connection(RPC_URL, "confirmed");
 
-      // Decode transaction (try base58 first, then base64)
+      // Decode transaction - BagsAPI uses base58
       let txBytes: Uint8Array;
       try {
-        txBytes = bs58.decode(data.transaction);
-      } catch {
-        txBytes = Uint8Array.from(atob(data.transaction), (c) => c.charCodeAt(0));
+        // First try base58 (BagsAPI format)
+        txBytes = bs58.decode(txString);
+        console.log("Decoded as base58, bytes:", txBytes.length);
+      } catch (e1) {
+        console.log("Base58 decode failed:", e1);
+        try {
+          // Fallback to base64
+          txBytes = Uint8Array.from(Buffer.from(txString, 'base64'));
+          console.log("Decoded as base64, bytes:", txBytes.length);
+        } catch (e2) {
+          console.log("Base64 decode also failed:", e2);
+          throw new Error(`Could not decode transaction: ${txString.substring(0, 30)}...`);
+        }
       }
 
       const transaction = VersionedTransaction.deserialize(txBytes);
@@ -140,11 +184,17 @@ export default function FeeClaim({ tokenMint, walletAddress }: FeeClaimProps) {
 
       <button
         onClick={handleClaim}
-        disabled={loading || claimable === null || claimable === 0}
+        disabled={loading || claimable === null || claimable === 0 || !canClaim}
         className="w-full py-3 rounded-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-medium transition disabled:opacity-30 disabled:cursor-not-allowed"
       >
-        {loading ? "Claiming..." : claimable === 0 ? "No fees to claim" : "Claim Fees"}
+        {loading ? "Claiming..." : !canClaim ? "Wrong wallet" : claimable === 0 ? "No fees to claim" : "Claim Fees"}
       </button>
+
+      {!canClaim && claimable !== null && claimable > 0 && (
+        <p className="mt-2 text-xs text-center text-yellow-400">
+          Use the original wallet to claim fees
+        </p>
+      )}
 
       {status && (
         <p className={`mt-2 text-xs text-center ${status.includes("Failed") ? "text-red-400" : "text-green-400"}`}>

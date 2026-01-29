@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getClaimableFees } from "@/lib/bags";
+import { getClaimablePositions, getClaimStats } from "@/lib/bags";
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,11 +11,38 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Missing tokenMint or wallet" }, { status: 400 });
     }
 
-    const fees = await getClaimableFees({ tokenMint, wallet });
+    // Get all claimable positions for the wallet and claim stats in parallel
+    const [positions, claimStats] = await Promise.all([
+      getClaimablePositions(wallet),
+      getClaimStats(tokenMint).catch(() => []), // Don't fail if claim stats unavailable
+    ]);
+
+    console.log(`Found ${positions.length} claimable positions for wallet ${wallet}`);
+
+    // Find the position for the specific token
+    const position = positions.find(p => p.tokenMint === tokenMint);
+
+    // Find total claimed for this wallet
+    const walletStats = claimStats.find(s => s.wallet === wallet);
+    const totalClaimed = walletStats?.totalClaimed || "0";
+
+    if (!position) {
+      console.log(`No position found for token ${tokenMint}`);
+      return NextResponse.json({
+        success: true,
+        claimable: "0",
+        claimed: totalClaimed,
+        position: null,
+      });
+    }
+
+    console.log(`Found position for token ${tokenMint}: ${position.claimableLamports} lamports, claimed: ${totalClaimed}`);
 
     return NextResponse.json({
       success: true,
-      ...fees,
+      claimable: String(position.claimableLamports),
+      claimed: totalClaimed,
+      position: position,
     });
   } catch (error) {
     console.error("Get claimable fees error:", error);

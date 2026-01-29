@@ -5,6 +5,8 @@ import { usePrivy } from "@privy-io/react-auth";
 import LaunchCoinButton from "@/components/LaunchCoinButton";
 import WalletInfo from "@/components/WalletInfo";
 import FeeClaim from "@/components/FeeClaim";
+import ChatSettingsPanel from "@/components/ChatSettingsPanel";
+import MessageInbox from "@/components/MessageInbox";
 import { DBUser } from "@/types";
 import { getOrCreateWallet } from "@/lib/wallet";
 
@@ -71,7 +73,11 @@ function AuthSectionInner({ onUserSynced }: AuthSectionProps) {
     );
   }
 
-  if (currentUser?.token_mint && walletAddress) {
+  if (currentUser?.token_mint) {
+    // Use the wallet_address from DB (fee claimer) for fetching fees
+    // But also pass current wallet for signing
+    const feeClaimerWallet = currentUser.wallet_address || walletAddress;
+
     return (
       <>
         <WalletInfo />
@@ -80,7 +86,26 @@ function AuthSectionInner({ onUserSynced }: AuthSectionProps) {
             <p className="text-green-400 font-medium">Your coin is live: {currentUser.token_symbol}</p>
             <p className="text-xs text-gray-500 font-mono mt-1">{currentUser.token_mint}</p>
           </div>
-          <FeeClaim tokenMint={currentUser.token_mint} walletAddress={walletAddress} />
+          {feeClaimerWallet && (
+            <FeeClaim
+              tokenMint={currentUser.token_mint}
+              walletAddress={feeClaimerWallet}
+              signerWallet={walletAddress || undefined}
+            />
+          )}
+
+          {/* Chat Settings */}
+          {user?.id && currentUser.token_symbol && (
+            <ChatSettingsPanel
+              privyId={user.id}
+              tokenSymbol={currentUser.token_symbol}
+            />
+          )}
+
+          {/* Message Inbox */}
+          {user?.id && (
+            <MessageInbox privyId={user.id} />
+          )}
         </div>
       </>
     );
