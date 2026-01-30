@@ -327,3 +327,427 @@ export async function getTokenTrades(tokenMint: string, limit = 50): Promise<Tra
   `;
   return rows as TradeWithUser[];
 }
+
+// ─── Post Functions ─────────────────────────────────────────────
+
+export interface Post {
+  id: number;
+  user_id: number;
+  content: string;
+  is_pinned: boolean;
+  created_at: string;
+}
+
+export interface PostWithUser extends Post {
+  twitter_username: string;
+  twitter_name: string | null;
+  twitter_pfp: string | null;
+  token_symbol: string | null;
+  is_pinned: boolean;
+  // Repost info
+  is_repost?: boolean;
+  repost_id?: number;
+  reposter_username?: string;
+  reposter_name?: string | null;
+  reposter_pfp?: string | null;
+  repost_created_at?: string;
+}
+
+export async function initPostsTable() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS posts (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      content TEXT NOT NULL,
+      is_pinned BOOLEAN DEFAULT false,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_posts_user ON posts(user_id)`;
+
+  // Add is_pinned column if it doesn't exist
+  try {
+    await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN DEFAULT false`;
+  } catch (e) {
+    // Column might already exist
+  }
+}
+
+export async function createPost(userId: number, content: string): Promise<Post> {
+  await initDb();
+  await initPostsTable();
+
+  const rows = await sql`
+    INSERT INTO posts (user_id, content)
+    VALUES (${userId}, ${content})
+    RETURNING *
+  `;
+  return rows[0] as Post;
+}
+
+export async function getAllPosts(limit = 50, offset = 0): Promise<PostWithUser[]> {
+  await initDb();
+  await initPostsTable();
+  await initLikesRepostsTable();
+
+  // Get original posts
+  const originalPosts = await sql`
+    SELECT p.*,
+           u.twitter_username,
+           u.twitter_name,
+           u.twitter_pfp,
+           u.token_symbol,
+           false as is_repost,
+           NULL::integer as repost_id,
+           NULL as reposter_username,
+           NULL as reposter_name,
+           NULL as reposter_pfp,
+           p.created_at as sort_date
+    FROM posts p
+    JOIN users u ON p.user_id = u.id
+  `;
+
+  // Get reposts with original post data
+  const reposts = await sql`
+    SELECT p.*,
+           u.twitter_username,
+           u.twitter_name,
+           u.twitter_pfp,
+           u.token_symbol,
+           true as is_repost,
+           r.id as repost_id,
+           reposter.twitter_username as reposter_username,
+           reposter.twitter_name as reposter_name,
+           reposter.twitter_pfp as reposter_pfp,
+           r.created_at as sort_date
+    FROM post_reposts r
+    JOIN posts p ON r.post_id = p.id
+    JOIN users u ON p.user_id = u.id
+    JOIN users reposter ON r.user_id = reposter.id
+  `;
+
+  // Combine and sort by date
+  const allPosts = [...originalPosts, ...reposts]
+    .sort((a, b) => new Date(b.sort_date as string).getTime() - new Date(a.sort_date as string).getTime())
+    .slice(offset, offset + limit);
+
+  return allPosts.map(post => ({
+    ...post,
+    repost_created_at: post.is_repost ? post.sort_date : undefined,
+  })) as PostWithUser[];
+}
+
+export async function getUserPosts(userId: number, limit = 50): Promise<PostWithUser[]> {
+  await initDb();
+  await initPostsTable();
+
+  const rows = await sql`
+    SELECT p.*,
+           u.twitter_username,
+           u.twitter_name,
+           u.twitter_pfp,
+           u.token_symbol
+    FROM posts p
+    JOIN users u ON p.user_id = u.id
+    WHERE p.user_id = ${userId}
+    ORDER BY p.created_at DESC
+    LIMIT ${limit}
+  `;
+  return rows as PostWithUser[];
+}
+
+export async function deletePost(postId: number, userId: number): Promise<boolean> {
+  await initDb();
+  await initPostsTable();
+
+  const result = await sql`
+    DELETE FROM posts WHERE id = ${postId} AND user_id = ${userId}
+    RETURNING id
+  `;
+  return result.length > 0;
+}
+
+export async function getLastPostTime(userId: number): Promise<Date | null> {
+  await initDb();
+  await initPostsTable();
+
+  const rows = await sql`
+    SELECT created_at FROM posts
+    WHERE user_id = ${userId}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
+  if (rows.length === 0) return null;
+  return new Date(rows[0].created_at as string);
+}
+
+export async function getUserPostsForProfile(userId: number, limit = 3): Promise<PostWithUser[]> {
+  await initDb();
+  await initPostsTable();
+
+  // Get pinned post first, then recent posts
+  const rows = await sql`
+    SELECT p.*,
+           u.twitter_username,
+           u.twitter_name,
+           u.twitter_pfp,
+           u.token_symbol
+    FROM posts p
+    JOIN users u ON p.user_id = u.id
+    WHERE p.user_id = ${userId}
+    ORDER BY p.is_pinned DESC, p.created_at DESC
+    LIMIT ${limit}
+  `;
+  return rows as PostWithUser[];
+}
+
+export async function pinPost(postId: number, userId: number): Promise<boolean> {
+  await initDb();
+  await initPostsTable();
+
+  // First, unpin all user's posts
+  await sql`UPDATE posts SET is_pinned = false WHERE user_id = ${userId}`;
+
+  // Then pin the selected post
+  const result = await sql`
+    UPDATE posts SET is_pinned = true
+    WHERE id = ${postId} AND user_id = ${userId}
+    RETURNING id
+  `;
+  return result.length > 0;
+}
+
+export async function unpinPost(postId: number, userId: number): Promise<boolean> {
+  await initDb();
+  await initPostsTable();
+
+  const result = await sql`
+    UPDATE posts SET is_pinned = false
+    WHERE id = ${postId} AND user_id = ${userId}
+    RETURNING id
+  `;
+  return result.length > 0;
+}
+
+// ─── Like & Repost Functions ─────────────────────────────────────
+
+export async function initLikesRepostsTable() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS post_likes (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, post_id)
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_post_likes_post ON post_likes(post_id)`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS post_reposts (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, post_id)
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_post_reposts_post ON post_reposts(post_id)`;
+}
+
+export async function toggleLike(userId: number, postId: number): Promise<{ liked: boolean; count: number }> {
+  await initDb();
+  await initLikesRepostsTable();
+
+  // Check if already liked
+  const existing = await sql`SELECT id FROM post_likes WHERE user_id = ${userId} AND post_id = ${postId}`;
+
+  if (existing.length > 0) {
+    // Unlike
+    await sql`DELETE FROM post_likes WHERE user_id = ${userId} AND post_id = ${postId}`;
+  } else {
+    // Like
+    await sql`INSERT INTO post_likes (user_id, post_id) VALUES (${userId}, ${postId})`;
+  }
+
+  // Get new count
+  const countResult = await sql`SELECT COUNT(*) as count FROM post_likes WHERE post_id = ${postId}`;
+  const count = parseInt(countResult[0].count as string) || 0;
+
+  return { liked: existing.length === 0, count };
+}
+
+export async function toggleRepost(userId: number, postId: number): Promise<{ reposted: boolean; count: number }> {
+  await initDb();
+  await initLikesRepostsTable();
+
+  // Check if already reposted
+  const existing = await sql`SELECT id FROM post_reposts WHERE user_id = ${userId} AND post_id = ${postId}`;
+
+  if (existing.length > 0) {
+    // Un-repost
+    await sql`DELETE FROM post_reposts WHERE user_id = ${userId} AND post_id = ${postId}`;
+  } else {
+    // Repost
+    await sql`INSERT INTO post_reposts (user_id, post_id) VALUES (${userId}, ${postId})`;
+  }
+
+  // Get new count
+  const countResult = await sql`SELECT COUNT(*) as count FROM post_reposts WHERE post_id = ${postId}`;
+  const count = parseInt(countResult[0].count as string) || 0;
+
+  return { reposted: existing.length === 0, count };
+}
+
+export async function getPostStats(postId: number, userId?: number): Promise<{
+  likeCount: number;
+  repostCount: number;
+  commentCount: number;
+  liked: boolean;
+  reposted: boolean;
+}> {
+  await initDb();
+  await initLikesRepostsTable();
+  await initCommentsTable();
+
+  const likeCountResult = await sql`SELECT COUNT(*) as count FROM post_likes WHERE post_id = ${postId}`;
+  const repostCountResult = await sql`SELECT COUNT(*) as count FROM post_reposts WHERE post_id = ${postId}`;
+  const commentCountResult = await sql`SELECT COUNT(*) as count FROM post_comments WHERE post_id = ${postId}`;
+
+  let liked = false;
+  let reposted = false;
+
+  if (userId) {
+    const likedResult = await sql`SELECT 1 FROM post_likes WHERE user_id = ${userId} AND post_id = ${postId}`;
+    const repostedResult = await sql`SELECT 1 FROM post_reposts WHERE user_id = ${userId} AND post_id = ${postId}`;
+    liked = likedResult.length > 0;
+    reposted = repostedResult.length > 0;
+  }
+
+  return {
+    likeCount: parseInt(likeCountResult[0].count as string) || 0,
+    repostCount: parseInt(repostCountResult[0].count as string) || 0,
+    commentCount: parseInt(commentCountResult[0].count as string) || 0,
+    liked,
+    reposted,
+  };
+}
+
+export async function getPostsWithStats(posts: PostWithUser[], userId?: number): Promise<(PostWithUser & {
+  like_count: number;
+  repost_count: number;
+  comment_count: number;
+  liked: boolean;
+  reposted: boolean;
+})[]> {
+  await initDb();
+  await initLikesRepostsTable();
+  await initCommentsTable();
+
+  const result = await Promise.all(
+    posts.map(async (post) => {
+      const stats = await getPostStats(post.id, userId);
+      return {
+        ...post,
+        like_count: stats.likeCount,
+        repost_count: stats.repostCount,
+        comment_count: stats.commentCount,
+        liked: stats.liked,
+        reposted: stats.reposted,
+      };
+    })
+  );
+
+  return result;
+}
+
+// ─── Comment Functions ─────────────────────────────────────────
+
+export interface Comment {
+  id: number;
+  post_id: number;
+  user_id: number;
+  content: string;
+  created_at: string;
+}
+
+export interface CommentWithUser extends Comment {
+  twitter_username: string;
+  twitter_name: string | null;
+  twitter_pfp: string | null;
+}
+
+export async function initCommentsTable() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS post_comments (
+      id SERIAL PRIMARY KEY,
+      post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      content TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_post_comments_post ON post_comments(post_id, created_at ASC)`;
+}
+
+export async function createComment(postId: number, userId: number, content: string): Promise<CommentWithUser> {
+  await initDb();
+  await initCommentsTable();
+
+  const rows = await sql`
+    INSERT INTO post_comments (post_id, user_id, content)
+    VALUES (${postId}, ${userId}, ${content})
+    RETURNING *
+  `;
+
+  const comment = rows[0] as Comment;
+
+  // Get user info
+  const userRows = await sql`SELECT twitter_username, twitter_name, twitter_pfp FROM users WHERE id = ${userId}`;
+  const user = userRows[0];
+
+  return {
+    ...comment,
+    twitter_username: user.twitter_username as string,
+    twitter_name: user.twitter_name as string | null,
+    twitter_pfp: user.twitter_pfp as string | null,
+  };
+}
+
+export async function getPostComments(postId: number): Promise<CommentWithUser[]> {
+  await initDb();
+  await initCommentsTable();
+
+  const rows = await sql`
+    SELECT c.*,
+           u.twitter_username,
+           u.twitter_name,
+           u.twitter_pfp
+    FROM post_comments c
+    JOIN users u ON c.user_id = u.id
+    WHERE c.post_id = ${postId}
+    ORDER BY c.created_at ASC
+  `;
+
+  return rows as CommentWithUser[];
+}
+
+export async function getCommentCount(postId: number): Promise<number> {
+  await initDb();
+  await initCommentsTable();
+
+  const rows = await sql`SELECT COUNT(*) as count FROM post_comments WHERE post_id = ${postId}`;
+  return parseInt(rows[0].count as string) || 0;
+}
+
+export async function deleteComment(commentId: number, userId: number): Promise<boolean> {
+  await initDb();
+  await initCommentsTable();
+
+  const result = await sql`
+    DELETE FROM post_comments WHERE id = ${commentId} AND user_id = ${userId}
+    RETURNING id
+  `;
+  return result.length > 0;
+}

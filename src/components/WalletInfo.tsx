@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { getOrCreateWallet, getKeypair, StoredWallet } from "@/lib/wallet";
 import { Transaction } from "@solana/web3.js";
 
@@ -399,8 +400,17 @@ export default function WalletInfo() {
         </div>
       )}
 
-      {/* Solscan Link */}
-      <div className="mt-3 text-center">
+      {/* Links */}
+      <div className="mt-3 flex items-center justify-center gap-4">
+        <Link
+          href="/portfolio"
+          className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3" />
+          </svg>
+          Portfolio
+        </Link>
         <a
           href={`https://solscan.io/account/${wallet.publicKey}`}
           target="_blank"

@@ -22,6 +22,12 @@ export default function Navbar() {
         <div className="flex items-center gap-2">
           {/* Navigation Links */}
           <Link
+          href="/feed"
+          className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/[0.05] transition-colors"
+        >
+          Feed
+        </Link>
+        <Link
           href="/explore"
           className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/[0.05] transition-colors"
         >
@@ -38,6 +44,12 @@ export default function Navbar() {
           className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/[0.05] transition-colors"
         >
           Activity
+        </Link>
+        <Link
+          href="/portfolio"
+          className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/[0.05] transition-colors"
+        >
+          Portfolio
         </Link>
 
         {/* Divider */}

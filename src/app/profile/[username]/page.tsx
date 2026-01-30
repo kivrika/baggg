@@ -20,6 +20,8 @@ export default function ProfilePage() {
   const [chatSettings, setChatSettings] = useState<ChatSettings | null>(null);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [currentWallet, setCurrentWallet] = useState<string | null>(null);
+  const [posts, setPosts] = useState<{ id: number; content: string; is_pinned: boolean; created_at: string }[]>([]);
+  const [pinning, setPinning] = useState(false);
 
   // Initialize wallet
   useEffect(() => {
@@ -59,6 +61,57 @@ export default function ProfilePage() {
         .catch(console.error);
     }
   }, [user?.token_mint, username]);
+
+  // Fetch posts for profile
+  const fetchPosts = () => {
+    if (user?.token_mint) {
+      fetch(`/api/posts/user?username=${username}&limit=3`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setPosts(data.posts);
+          }
+        })
+        .catch(console.error);
+    }
+  };
+
+  useEffect(() => {
+    fetchPosts();
+  }, [user?.token_mint, username]);
+
+  const handlePinToggle = async (postId: number, isPinned: boolean) => {
+    if (!privyUser?.id) return;
+    setPinning(true);
+    try {
+      const res = await fetch("/api/posts/pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          privyId: privyUser.id,
+          postId,
+          action: isPinned ? "unpin" : "pin",
+        }),
+      });
+      if (res.ok) {
+        fetchPosts();
+      }
+    } catch (e) {
+      console.error("Failed to pin/unpin:", e);
+    } finally {
+      setPinning(false);
+    }
+  };
+
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    if (seconds < 60) return "just now";
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+    return `${Math.floor(seconds / 86400)}d`;
+  };
 
   // Check if viewing own profile
   const isOwnProfile = authenticated && privyUser?.twitter?.username === username;
@@ -165,6 +218,55 @@ export default function ProfilePage() {
           ) : (
             <div className="mt-6 p-6 rounded-xl bg-white/[0.02] border border-dashed border-white/[0.06] text-center">
               <p className="text-gray-600 text-sm">No coin launched yet</p>
+            </div>
+          )}
+
+          {/* Posts Section */}
+          {hasCoin && posts.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-sm font-medium text-gray-400 mb-3">Recent Posts</h3>
+              <div className="space-y-3">
+                {posts.map((post) => (
+                  <div
+                    key={post.id}
+                    className={`p-4 rounded-xl border transition ${
+                      post.is_pinned
+                        ? "bg-violet-500/5 border-violet-500/20"
+                        : "bg-white/[0.02] border-white/[0.06]"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        {post.is_pinned && (
+                          <span className="text-xs text-violet-400 flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M16 4a1 1 0 01.117 1.993L16 6v4.586l3.707 3.707a1 1 0 01.083 1.32l-.083.094-1.414 1.414a1 1 0 01-1.32.083l-.094-.083L13.586 14H12v6a1 1 0 01-1.993.117L10 20v-6H8.414l-3.293 3.293a1 1 0 01-1.497-1.32l.083-.094L7.414 12 4.707 9.293a1 1 0 01-.083-1.32l.083-.094 1.414-1.414a1 1 0 011.32-.083l.094.083L11 9.879V6a1 1 0 01.883-.993L12 5h4z"/>
+                            </svg>
+                            Pinned
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-600">{formatTimeAgo(post.created_at)}</span>
+                      </div>
+                      {isOwnProfile && (
+                        <button
+                          onClick={() => handlePinToggle(post.id, post.is_pinned)}
+                          disabled={pinning}
+                          className={`text-xs px-2 py-1 rounded transition ${
+                            post.is_pinned
+                              ? "text-violet-400 hover:text-violet-300"
+                              : "text-gray-600 hover:text-gray-400"
+                          }`}
+                        >
+                          {post.is_pinned ? "Unpin" : "Pin"}
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-200 whitespace-pre-wrap break-words">
+                      {post.content}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

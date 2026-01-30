@@ -167,8 +167,9 @@ export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) 
           const solAmount = side === "buy"
             ? parseFloat(amount)
             : parseInt(quoteData.quote.outAmount) / LAMPORTS_PER_SOL;
+          // Store tokenAmount in UI units (human-readable) for both buy and sell
           const tokenAmount = side === "buy"
-            ? parseInt(quoteData.quote.outAmount)
+            ? parseInt(quoteData.quote.outAmount) / Math.pow(10, tokenDecimals)
             : parseFloat(amount);
 
           await fetch("/api/trades", {
