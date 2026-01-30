@@ -33,6 +33,12 @@ export default function Navbar() {
         >
           Messages
         </Link>
+        <Link
+          href="/activity"
+          className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/[0.05] transition-colors"
+        >
+          Activity
+        </Link>
 
         {/* Divider */}
         <div className="w-px h-6 bg-white/[0.1] mx-1" />
