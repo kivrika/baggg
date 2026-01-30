@@ -18,11 +18,33 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [customTicker, setCustomTicker] = useState("");
+  const [tickerError, setTickerError] = useState<string | null>(null);
 
   useEffect(() => {
     const wallet = getOrCreateWallet();
     setWalletAddress(wallet.publicKey);
   }, []);
+
+  // Validate ticker
+  const validateTicker = (value: string) => {
+    const cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (cleaned.length > 8) return cleaned.slice(0, 8);
+    return cleaned;
+  };
+
+  const handleTickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = validateTicker(e.target.value);
+    setCustomTicker(value);
+
+    if (value.length < 2) {
+      setTickerError("Ticker must be at least 2 characters");
+    } else if (value.length > 8) {
+      setTickerError("Ticker cannot exceed 8 characters");
+    } else {
+      setTickerError(null);
+    }
+  };
 
   const signAndSendTransaction = async (txData: unknown, retries = 3): Promise<string> => {
     const keypair = getKeypair();
@@ -198,7 +220,7 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
   };
 
   // Save/load launch progress to resume if something fails
-  const saveProgress = (data: { tokenMint: string; tokenMetadata: string; configKey: string; configDone: boolean }) => {
+  const saveProgress = (data: { tokenMint: string; tokenMetadata: string; configKey: string; configDone: boolean; ticker: string }) => {
     localStorage.setItem('launchProgress', JSON.stringify(data));
   };
 
@@ -283,15 +305,22 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
             walletAddress: walletAddress,
             step: "confirm",
             tokenMint: savedProgress.tokenMint,
+            customTicker: savedProgress.ticker,
           }),
         });
 
         await confirmRes.json();
         clearProgress();
-        setStatus(`Coin launched!`);
+        setStatus(`Coin launched! ${savedProgress.ticker}`);
         onLaunched?.(savedProgress.tokenMint);
         return;
       }
+      // Validate ticker before launch
+      const ticker = customTicker.trim();
+      if (ticker.length < 2 || ticker.length > 8) {
+        throw new Error("Ticker must be 2-8 characters");
+      }
+
       // Step 1: Prepare token (create token info + fee config)
       const prepareRes = await fetch("/api/launch-coin", {
         method: "POST",
@@ -299,6 +328,7 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
         body: JSON.stringify({
           privyId: user.id,
           walletAddress: walletAddress,
+          customTicker: ticker,
         }),
       });
 
@@ -369,6 +399,7 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
           tokenMetadata: prepareData.tokenMetadata,
           configKey: prepareData.configKey,
           configDone: true,
+          ticker: ticker,
         });
         console.log("Progress saved for resume");
       } else {
@@ -379,6 +410,7 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
           tokenMetadata: prepareData.tokenMetadata,
           configKey: prepareData.configKey,
           configDone: true,
+          ticker: ticker,
         });
       }
 
@@ -421,6 +453,7 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
           walletAddress: walletAddress,
           step: "confirm",
           tokenMint: prepareData.tokenMint,
+          customTicker: ticker,
         }),
       });
 
@@ -440,11 +473,37 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
     }
   };
 
+  const canLaunch = walletAddress && customTicker.length >= 2 && customTicker.length <= 8 && !tickerError;
+
   return (
-    <div>
+    <div className="space-y-4">
+      {/* Ticker Input */}
+      <div>
+        <label className="block text-sm text-gray-400 mb-2">
+          Token Ticker (2-8 characters)
+        </label>
+        <input
+          type="text"
+          value={customTicker}
+          onChange={handleTickerChange}
+          placeholder="e.g. BAGS"
+          disabled={loading}
+          className="w-full px-4 py-3 rounded-lg bg-white/[0.05] border border-white/[0.1] text-white placeholder-gray-600 focus:outline-none focus:border-violet-500/50 uppercase disabled:opacity-50"
+          maxLength={8}
+        />
+        {tickerError && (
+          <p className="mt-1 text-xs text-red-400">{tickerError}</p>
+        )}
+        {customTicker && !tickerError && (
+          <p className="mt-1 text-xs text-gray-500">
+            Your token will be called <span className="text-violet-400 font-medium">${customTicker}</span>
+          </p>
+        )}
+      </div>
+
       <button
         onClick={handleLaunch}
-        disabled={loading || !walletAddress}
+        disabled={loading || !canLaunch}
         className="w-full py-3 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {loading ? "Launching..." : "Launch Your Coin"}

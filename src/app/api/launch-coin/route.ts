@@ -6,7 +6,7 @@ import { prepareToken, finalizeToken } from "@/lib/bags-sdk";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { privyId, walletAddress, step, tokenMint, tokenMetadata, configKey } = body;
+    const { privyId, walletAddress, step, tokenMint, tokenMetadata, configKey, customTicker } = body;
 
     if (!privyId || !walletAddress) {
       return NextResponse.json({ error: "Missing privyId or walletAddress" }, { status: 400 });
@@ -49,7 +49,10 @@ export async function POST(req: NextRequest) {
       }
 
       const tokenName = user.twitter_name || user.twitter_username;
-      const tokenSymbol = user.twitter_username.toUpperCase().slice(0, 8);
+      // Get ticker from body - it should be passed through from the frontend
+      const tokenSymbol = customTicker
+        ? customTicker.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8)
+        : user.twitter_username.toUpperCase().slice(0, 8);
 
       await updateUserToken(privyId, tokenMint, tokenName, tokenSymbol);
 
@@ -64,7 +67,13 @@ export async function POST(req: NextRequest) {
 
     // Step 1: Prepare (create token + config)
     const tokenName = user.twitter_name || user.twitter_username;
-    const tokenSymbol = user.twitter_username.toUpperCase().slice(0, 8);
+
+    // Use custom ticker if provided, otherwise fall back to username
+    if (!customTicker || customTicker.length < 2 || customTicker.length > 8) {
+      return NextResponse.json({ error: "Ticker must be 2-8 characters" }, { status: 400 });
+    }
+    const tokenSymbol = customTicker.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+
     const description = `Social token for @${user.twitter_username} on FriendBags`;
 
     let imageUrl = user.twitter_pfp || "https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png";
