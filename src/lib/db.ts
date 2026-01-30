@@ -207,3 +207,123 @@ export async function hasMessaged(senderId: number, recipientId: number): Promis
   const rows = await sql`SELECT 1 FROM messages WHERE sender_id = ${senderId} AND recipient_id = ${recipientId} LIMIT 1`;
   return rows.length > 0;
 }
+
+// ─── Trade Functions ─────────────────────────────────────────────
+
+export interface Trade {
+  id: number;
+  user_id: number;
+  token_mint: string;
+  trade_type: 'buy' | 'sell';
+  sol_amount: number;
+  token_amount: number;
+  tx_signature: string;
+  created_at: string;
+}
+
+export interface TradeWithUser extends Trade {
+  twitter_username: string;
+  twitter_name: string | null;
+  twitter_pfp: string | null;
+  token_symbol: string | null;
+  token_owner_username: string | null;
+}
+
+export async function initTradesTable() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS trades (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_mint TEXT NOT NULL,
+      trade_type TEXT NOT NULL CHECK (trade_type IN ('buy', 'sell')),
+      sol_amount NUMERIC(20, 9) NOT NULL,
+      token_amount NUMERIC(38, 18) NOT NULL,
+      tx_signature TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_trades_created ON trades(created_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_trades_user ON trades(user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_trades_token ON trades(token_mint)`;
+}
+
+export async function createTrade(data: {
+  userId: number;
+  tokenMint: string;
+  tradeType: 'buy' | 'sell';
+  solAmount: number;
+  tokenAmount: number;
+  txSignature: string;
+}): Promise<Trade> {
+  await initDb();
+  await initTradesTable();
+
+  const rows = await sql`
+    INSERT INTO trades (user_id, token_mint, trade_type, sol_amount, token_amount, tx_signature)
+    VALUES (${data.userId}, ${data.tokenMint}, ${data.tradeType}, ${data.solAmount}, ${data.tokenAmount}, ${data.txSignature})
+    RETURNING *
+  `;
+  return rows[0] as Trade;
+}
+
+export async function getRecentTrades(limit = 50, offset = 0): Promise<TradeWithUser[]> {
+  await initDb();
+  await initTradesTable();
+
+  const rows = await sql`
+    SELECT t.*,
+           u.twitter_username,
+           u.twitter_name,
+           u.twitter_pfp,
+           owner.token_symbol,
+           owner.twitter_username as token_owner_username
+    FROM trades t
+    JOIN users u ON t.user_id = u.id
+    LEFT JOIN users owner ON t.token_mint = owner.token_mint
+    ORDER BY t.created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `;
+  return rows as TradeWithUser[];
+}
+
+export async function getUserTrades(userId: number, limit = 50): Promise<TradeWithUser[]> {
+  await initDb();
+  await initTradesTable();
+
+  const rows = await sql`
+    SELECT t.*,
+           u.twitter_username,
+           u.twitter_name,
+           u.twitter_pfp,
+           owner.token_symbol,
+           owner.twitter_username as token_owner_username
+    FROM trades t
+    JOIN users u ON t.user_id = u.id
+    LEFT JOIN users owner ON t.token_mint = owner.token_mint
+    WHERE t.user_id = ${userId}
+    ORDER BY t.created_at DESC
+    LIMIT ${limit}
+  `;
+  return rows as TradeWithUser[];
+}
+
+export async function getTokenTrades(tokenMint: string, limit = 50): Promise<TradeWithUser[]> {
+  await initDb();
+  await initTradesTable();
+
+  const rows = await sql`
+    SELECT t.*,
+           u.twitter_username,
+           u.twitter_name,
+           u.twitter_pfp,
+           owner.token_symbol,
+           owner.twitter_username as token_owner_username
+    FROM trades t
+    JOIN users u ON t.user_id = u.id
+    LEFT JOIN users owner ON t.token_mint = owner.token_mint
+    WHERE t.token_mint = ${tokenMint}
+    ORDER BY t.created_at DESC
+    LIMIT ${limit}
+  `;
+  return rows as TradeWithUser[];
+}

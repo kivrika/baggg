@@ -15,7 +15,7 @@ interface TradePanelProps {
 }
 
 export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) {
-  const { authenticated } = usePrivy();
+  const { authenticated, user } = usePrivy();
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("");
@@ -160,6 +160,33 @@ export default function TradePanel({ tokenMint, tokenSymbol }: TradePanelProps) 
 
       setStatus("Signing transaction...");
       const signature = await signAndSendTransaction(txString);
+
+      // Record the trade
+      if (user?.id) {
+        try {
+          const solAmount = side === "buy"
+            ? parseFloat(amount)
+            : parseInt(quoteData.quote.outAmount) / LAMPORTS_PER_SOL;
+          const tokenAmount = side === "buy"
+            ? parseInt(quoteData.quote.outAmount)
+            : parseFloat(amount);
+
+          await fetch("/api/trades", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              privyId: user.id,
+              tokenMint,
+              tradeType: side,
+              solAmount,
+              tokenAmount,
+              txSignature: signature,
+            }),
+          });
+        } catch (e) {
+          console.error("Failed to record trade:", e);
+        }
+      }
 
       setStatus(`Trade successful! Tx: ${signature.slice(0, 8)}...`);
       setQuote(null);

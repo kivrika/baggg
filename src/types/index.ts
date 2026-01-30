@@ -108,3 +108,23 @@ export interface MessageWithSender extends Message {
   sender_name: string | null;
   sender_pfp: string | null;
 }
+
+// ─── Trade Types ────────────────────────────────────────────────
+export interface Trade {
+  id: number;
+  user_id: number;
+  token_mint: string;
+  trade_type: 'buy' | 'sell';
+  sol_amount: number;
+  token_amount: number;
+  tx_signature: string;
+  created_at: string;
+}
+
+export interface TradeWithUser extends Trade {
+  twitter_username: string;
+  twitter_name: string | null;
+  twitter_pfp: string | null;
+  token_symbol: string | null;
+  token_owner_username: string | null;
+}
