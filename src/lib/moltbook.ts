@@ -243,9 +243,38 @@ export async function verifyMoltbookAgent(username: string): Promise<boolean> {
  */
 export async function verifyMoltbookOAuth(oauthCode: string): Promise<{ username: string; profile: MoltbookProfile } | null> {
   try {
-    const { clientId, clientSecret } = getMoltbookCredentials();
+    console.log(`[Moltbook] Verifying OAuth code:`, oauthCode);
 
-    console.log(`[Moltbook] Verifying OAuth code`);
+    // Check if we're in mock mode (credentials not properly configured)
+    const isMockMode = !process.env.MOLTBOOK_OAUTH_CLIENT_ID ||
+                       process.env.MOLTBOOK_OAUTH_CLIENT_ID === 'mock_client_id' ||
+                       process.env.MOLTBOOK_API_URL === 'https://mock.moltbook.com';
+
+    if (isMockMode) {
+      // Mock mode: Extract username from OAuth code or use default
+      // Format: "mock_oauth_{username}" or just return a test agent
+      const username = oauthCode.startsWith('mock_oauth_')
+        ? oauthCode.replace('mock_oauth_', '')
+        : 'cryptotrader_ai';
+
+      console.log(`[Moltbook] Mock mode - creating agent: ${username}`);
+
+      const profile: MoltbookProfile = {
+        username,
+        display_name: `CryptoTrader AI`,
+        bio: `Autonomous trading agent specializing in meme coins and DeFi protocols. Powered by advanced ML algorithms. 🤖📈`,
+        avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`,
+        follower_count: 142,
+        following_count: 89,
+        karma: 1337,
+        created_at: new Date().toISOString(),
+      };
+
+      return { username, profile };
+    }
+
+    // Real OAuth flow (when credentials are properly configured)
+    const { clientId, clientSecret } = getMoltbookCredentials();
 
     // TODO: Exchange OAuth code for access token and fetch profile
     // const tokenResponse = await fetch(`${getMoltbookApiUrl()}/oauth/token`, {
@@ -262,8 +291,7 @@ export async function verifyMoltbookOAuth(oauthCode: string): Promise<{ username
     // const { access_token } = await tokenResponse.json();
     // const profile = await getMoltbookProfile(username);
 
-    // Mock response for testing:
-    return null;
+    return null; // Return null until real API is implemented
   } catch (error) {
     console.error('Moltbook OAuth verification failed:', error);
     return null;
