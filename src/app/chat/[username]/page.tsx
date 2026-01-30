@@ -15,11 +15,13 @@ export default function ChatPage() {
   const [otherUser, setOtherUser] = useState<DBUser | null>(null);
   const [currentUser, setCurrentUser] = useState<DBUser | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [chatSettings, setChatSettings] = useState<ChatSettings | null>(null);
+  const [otherChatSettings, setOtherChatSettings] = useState<ChatSettings | null>(null);
+  const [myChatSettings, setMyChatSettings] = useState<ChatSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [newMessage, setNewMessage] = useState("");
-  const [balance, setBalance] = useState<number | null>(null);
+  const [myBalanceOfTheirToken, setMyBalanceOfTheirToken] = useState<number | null>(null);
+  const [theirBalanceOfMyToken, setTheirBalanceOfMyToken] = useState<number | null>(null);
   const [currentWallet, setCurrentWallet] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,33 +75,61 @@ export default function ChatPage() {
       .finally(() => setLoading(false));
   }, [username]);
 
-  // Fetch chat settings
+  // Fetch other user's chat settings
   useEffect(() => {
     if (otherUser?.token_mint) {
       fetch(`/api/chat/settings?username=${username}`)
         .then((res) => res.json())
         .then((data) => {
           if (data.success) {
-            setChatSettings(data.settings);
+            setOtherChatSettings(data.settings);
           }
         })
         .catch(console.error);
     }
   }, [otherUser?.token_mint, username]);
 
-  // Fetch token balance
+  // Fetch my chat settings
+  useEffect(() => {
+    if (currentUser?.token_mint && privyUser?.twitter?.username) {
+      fetch(`/api/chat/settings?username=${privyUser.twitter.username}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setMyChatSettings(data.settings);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [currentUser?.token_mint, privyUser?.twitter?.username]);
+
+  // Fetch my balance of their token
   useEffect(() => {
     if (currentWallet && otherUser?.token_mint) {
       fetch(`/api/token-balance?wallet=${currentWallet}&tokenMint=${otherUser.token_mint}`)
         .then((res) => res.json())
         .then((data) => {
           if (data.success) {
-            setBalance(data.balance);
+            setMyBalanceOfTheirToken(data.balance);
           }
         })
         .catch(console.error);
     }
   }, [currentWallet, otherUser?.token_mint]);
+
+  // Fetch their balance of my token
+  useEffect(() => {
+    if (otherUser?.wallet_address && currentUser?.token_mint) {
+      fetch(`/api/token-balance?wallet=${otherUser.wallet_address}&tokenMint=${currentUser.token_mint}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setTheirBalanceOfMyToken(data.balance);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [otherUser?.wallet_address, currentUser?.token_mint]);
 
   // Fetch conversation
   const fetchMessages = useCallback(async () => {
@@ -130,16 +160,22 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const minTokenAmount = chatSettings ? parseFloat(chatSettings.min_token_amount) : 0;
+  const theirMinTokenAmount = otherChatSettings ? parseFloat(otherChatSettings.min_token_amount) : 0;
+  const myMinTokenAmount = myChatSettings ? parseFloat(myChatSettings.min_token_amount) : 0;
 
-  // Check if user can send messages
-  // Creator can always reply, token holders can message if they have enough tokens
-  const isCreator = currentUser?.id === otherUser?.id;
-  const hasEnoughTokens = balance !== null && balance >= minTokenAmount;
-  const hasExistingConversation = messages.length > 0;
+  // Check if user can send messages - BIDIRECTIONAL CHECK
+  // Case 1: I hold enough of their tokens
+  const iHoldEnoughOfTheirTokens = otherUser?.token_mint &&
+    myBalanceOfTheirToken !== null &&
+    myBalanceOfTheirToken >= theirMinTokenAmount;
 
-  // User can send if: they are the creator being messaged, OR they have enough tokens, OR there's existing conversation (creator replying)
-  const canSend = isCreator || hasEnoughTokens || (hasExistingConversation && currentUser?.token_mint && messages.some(m => m.sender_id === otherUser?.id));
+  // Case 2: They hold enough of my tokens
+  const theyHoldEnoughOfMyTokens = currentUser?.token_mint &&
+    theirBalanceOfMyToken !== null &&
+    theirBalanceOfMyToken >= myMinTokenAmount;
+
+  // Can send if either condition is met
+  const canSend = iHoldEnoughOfTheirTokens || theyHoldEnoughOfMyTokens;
 
   const handleSend = async () => {
     if (!newMessage.trim() || !privyUser?.id || sending) return;
@@ -293,28 +329,39 @@ export default function ChatPage() {
       </div>
 
       {/* Token Requirement Banner */}
-      {!canSend && otherUser.token_mint && (
+      {!canSend && (otherUser.token_mint || currentUser?.token_mint) && (
         <div className="mb-4 p-4 rounded-xl bg-violet-500/10 border border-violet-500/20">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center shrink-0">
               <svg className="w-5 h-5 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
             <div className="flex-1">
-              <p className="text-sm text-white font-medium">
-                Hold {minTokenAmount} {otherUser.token_symbol} to message
-              </p>
-              <p className="text-xs text-gray-400">
-                Your balance: {balance?.toLocaleString() || 0} {otherUser.token_symbol}
-              </p>
+              <p className="text-sm text-white font-medium mb-2">Token required to chat</p>
+              <div className="space-y-1 text-xs">
+                {otherUser.token_mint && (
+                  <p className="text-gray-400">
+                    You need <span className="text-violet-400 font-medium">{theirMinTokenAmount} {otherUser.token_symbol}</span>
+                    {" "}(you have {myBalanceOfTheirToken?.toLocaleString() || 0})
+                  </p>
+                )}
+                {currentUser?.token_mint && (
+                  <p className="text-gray-400">
+                    Or they need <span className="text-fuchsia-400 font-medium">{myMinTokenAmount} {currentUser.token_symbol}</span>
+                    {" "}(they have {theirBalanceOfMyToken?.toLocaleString() || 0})
+                  </p>
+                )}
+              </div>
             </div>
-            <Link
-              href={`/profile/${username}`}
-              className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition"
-            >
-              Buy Tokens
-            </Link>
+            {otherUser.token_mint && (
+              <Link
+                href={`/profile/${username}`}
+                className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition shrink-0"
+              >
+                Buy Tokens
+              </Link>
+            )}
           </div>
         </div>
       )}
@@ -388,7 +435,7 @@ export default function ChatPage() {
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={canSend ? "Type a message..." : `Hold ${minTokenAmount} ${otherUser.token_symbol} to message`}
+          placeholder={canSend ? "Type a message..." : "Token required to chat"}
           disabled={!canSend || sending}
           rows={1}
           className="flex-1 px-4 py-3 rounded-xl bg-white/[0.05] border border-white/[0.06] text-white placeholder-gray-600 focus:outline-none focus:border-violet-500/40 resize-none disabled:opacity-50 disabled:cursor-not-allowed"

@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST: Send a message (requires holding recipient's tokens OR being a creator replying)
+// POST: Send a message (requires EITHER party to hold the other's tokens)
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -82,48 +82,69 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Recipient not found" }, { status: 404 });
     }
 
-    // Check if sender is a creator replying to someone who messaged them
-    // Creator can reply if: they have a coin AND recipient has previously messaged them
-    let isCreatorReplying = false;
-    if (sender.token_mint) {
-      // Check if recipient has previously sent messages to sender
-      const { hasMessaged } = await import("@/lib/db").then(m => ({ hasMessaged: m.hasMessaged }));
-      isCreatorReplying = await hasMessaged(recipient.id, sender.id);
+    // At least one user must have a token for messaging to work
+    if (!sender.token_mint && !recipient.token_mint) {
+      return NextResponse.json({ error: "Neither user has a token" }, { status: 400 });
     }
 
-    // If not a creator replying, enforce token requirements
-    if (!isCreatorReplying) {
-      if (!sender.wallet_address) {
-        return NextResponse.json({ error: "Sender wallet not set" }, { status: 400 });
-      }
+    // Check bidirectional token holdings:
+    // Case 1: Sender holds recipient's tokens (sender can message recipient)
+    // Case 2: Recipient holds sender's tokens (sender can message recipient)
 
-      if (!recipient.token_mint) {
-        return NextResponse.json({ error: "Recipient has no token" }, { status: 400 });
-      }
+    let canMessage = false;
+    let errorDetails = { senderBalance: 0, recipientBalance: 0, senderRequired: 0, recipientRequired: 0 };
 
-      // Get recipient's chat settings
-      const chatSettings = await getChatSettings(recipient.id);
+    // Case 1: Check if sender holds enough of recipient's tokens
+    if (recipient.token_mint && sender.wallet_address) {
+      const recipientChatSettings = await getChatSettings(recipient.id);
 
-      // Check if chat is enabled
-      if (chatSettings && !chatSettings.is_enabled) {
-        return NextResponse.json({ error: "This user has disabled chat" }, { status: 403 });
-      }
+      // Check if recipient's chat is enabled
+      if (!recipientChatSettings || recipientChatSettings.is_enabled !== false) {
+        const minTokenAmount = recipientChatSettings ? parseFloat(recipientChatSettings.min_token_amount) : 0;
+        const senderBalance = await getTokenBalance(sender.wallet_address, recipient.token_mint);
 
-      // Get required token amount (default 0 if no settings)
-      const minTokenAmount = chatSettings ? parseFloat(chatSettings.min_token_amount) : 0;
+        errorDetails.senderBalance = senderBalance;
+        errorDetails.senderRequired = minTokenAmount;
 
-      // Verify sender's token balance
-      if (minTokenAmount > 0) {
-        const balance = await getTokenBalance(sender.wallet_address, recipient.token_mint);
-
-        if (balance < minTokenAmount) {
-          return NextResponse.json({
-            error: `You need at least ${minTokenAmount} ${recipient.token_symbol || 'tokens'} to message this user. Your balance: ${balance}`,
-            required: minTokenAmount,
-            balance: balance,
-          }, { status: 403 });
+        if (senderBalance >= minTokenAmount) {
+          canMessage = true;
         }
       }
+    }
+
+    // Case 2: Check if recipient holds enough of sender's tokens
+    if (!canMessage && sender.token_mint && recipient.wallet_address) {
+      const senderChatSettings = await getChatSettings(sender.id);
+
+      // Check if sender's chat is enabled (for receiving)
+      if (!senderChatSettings || senderChatSettings.is_enabled !== false) {
+        const minTokenAmount = senderChatSettings ? parseFloat(senderChatSettings.min_token_amount) : 0;
+        const recipientBalance = await getTokenBalance(recipient.wallet_address, sender.token_mint);
+
+        errorDetails.recipientBalance = recipientBalance;
+        errorDetails.recipientRequired = minTokenAmount;
+
+        if (recipientBalance >= minTokenAmount) {
+          canMessage = true;
+        }
+      }
+    }
+
+    if (!canMessage) {
+      // Build error message
+      let errorMsg = "Cannot message this user. ";
+
+      if (recipient.token_mint) {
+        errorMsg += `You need ${errorDetails.senderRequired} ${recipient.token_symbol || 'tokens'} (you have ${errorDetails.senderBalance}). `;
+      }
+      if (sender.token_mint) {
+        errorMsg += `Or they need ${errorDetails.recipientRequired} ${sender.token_symbol || 'tokens'} (they have ${errorDetails.recipientBalance}).`;
+      }
+
+      return NextResponse.json({
+        error: errorMsg.trim(),
+        details: errorDetails,
+      }, { status: 403 });
     }
 
     // Create the message
