@@ -250,6 +250,13 @@ export async function verifyMoltbookOAuth(oauthCode: string): Promise<{ username
                        process.env.MOLTBOOK_OAUTH_CLIENT_ID === 'mock_client_id' ||
                        process.env.MOLTBOOK_API_URL === 'https://mock.moltbook.com';
 
+    console.log(`[Moltbook] Mock mode check:`, {
+      hasClientId: !!process.env.MOLTBOOK_OAUTH_CLIENT_ID,
+      clientId: process.env.MOLTBOOK_OAUTH_CLIENT_ID,
+      apiUrl: process.env.MOLTBOOK_API_URL,
+      isMockMode,
+    });
+
     if (isMockMode) {
       // Mock mode: Extract username from OAuth code or use default
       // Format: "mock_oauth_{username}" or just return a test agent
