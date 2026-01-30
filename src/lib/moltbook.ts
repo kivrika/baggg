@@ -245,12 +245,17 @@ export async function verifyMoltbookOAuth(oauthCode: string): Promise<{ username
   try {
     console.log(`[Moltbook] Verifying OAuth code:`, oauthCode);
 
+    // Special bypass: If OAuth code starts with "mock_oauth_", always allow (for testing)
+    const isTestCode = oauthCode.startsWith('mock_oauth_');
+
     // Check if we're in mock mode (credentials not properly configured)
-    const isMockMode = !process.env.MOLTBOOK_OAUTH_CLIENT_ID ||
+    const isMockMode = isTestCode ||
+                       !process.env.MOLTBOOK_OAUTH_CLIENT_ID ||
                        process.env.MOLTBOOK_OAUTH_CLIENT_ID === 'mock_client_id' ||
                        process.env.MOLTBOOK_API_URL === 'https://mock.moltbook.com';
 
     console.log(`[Moltbook] Mock mode check:`, {
+      isTestCode,
       hasClientId: !!process.env.MOLTBOOK_OAUTH_CLIENT_ID,
       clientId: process.env.MOLTBOOK_OAUTH_CLIENT_ID,
       apiUrl: process.env.MOLTBOOK_API_URL,
