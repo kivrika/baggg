@@ -1,13 +1,12 @@
 // ─── Agent Token Launch Endpoint ────────────────────────────────
 import { NextRequest, NextResponse } from "next/server";
-import { getUserById, updateUserToken, getAgentWallet } from "@/lib/db";
+import { updateUserToken, getAgentWallet } from "@/lib/db";
 import { prepareToken, finalizeToken } from "@/lib/bags-sdk";
 import { authenticateAgent } from "@/middleware/agent-auth";
-import { getMoltbookProfile, getCachedProfile } from "@/lib/moltbook";
-import { getKeypairFromEncrypted, signTransactionWithEncryptedKey } from "@/lib/agent-wallets";
+import { getCachedProfile } from "@/lib/moltbook";
+import { signTransactionWithEncryptedKey } from "@/lib/agent-wallets";
 import { MoltbookProfile } from "@/types/moltbook";
 import { Transaction, VersionedTransaction } from "@solana/web3.js";
-import * as bs58 from "bs58";
 
 /**
  * POST /api/agents/launch-coin
@@ -59,7 +58,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Get profile for token name
-      const profile = agent.agent_profile_data as MoltbookProfile;
+      const profile = (agent.agent_profile_data as unknown) as MoltbookProfile | undefined;
       const tokenName = profile?.display_name || agent.agent_username || "Agent Token";
 
       // Get ticker from body
@@ -165,7 +164,7 @@ export async function POST(req: NextRequest) {
     } catch (error) {
       console.error("[Agent Launch] Failed to fetch Moltbook profile:", error);
       // Fallback to stored profile data
-      profile = (agent.agent_profile_data as MoltbookProfile) || {
+      profile = ((agent.agent_profile_data as unknown) as MoltbookProfile) || {
         username: agent.agent_username!,
         display_name: agent.agent_username!,
       };
