@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     const profile = await getMoltbookProfile(agent.agent_username);
 
     // Update database
-    await updateAgentProfile(agent.id, profile);
+    await updateAgentProfile(agent.id, profile as unknown as Record<string, unknown>);
 
     console.log(`[Agent Profile Sync] Successfully synced ${agent.agent_username}`);
 

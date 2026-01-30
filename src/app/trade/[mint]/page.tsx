@@ -45,7 +45,7 @@ export default function TradePage() {
         <div className="flex items-center gap-3 mb-6">
           <img
             src={user.twitter_pfp || "/default-avatar.png"}
-            alt={user.twitter_username}
+            alt={user.twitter_username || "User"}
             className="w-10 h-10 rounded-full bg-gray-700"
           />
           <div>

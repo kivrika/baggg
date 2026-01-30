@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
     console.log(`[Agent Registration] Creating agent record for ${cleanUsername}`);
     const agent = await createAgent({
       agentUsername: cleanUsername,
-      agentProfileData: moltbookProfile,
+      agentProfileData: moltbookProfile as unknown as Record<string, unknown>,
       walletAddress: publicKey,
     });
 
@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
       agent: {
         id: agent.id,
         username: cleanUsername,
-        profileData: moltbookProfile,
+        profileData: moltbookProfile as unknown as Record<string, unknown>,
       },
     };
 

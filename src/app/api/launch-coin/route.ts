@@ -48,11 +48,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Missing tokenMint for confirm" }, { status: 400 });
       }
 
-      const tokenName = user.twitter_name || user.twitter_username;
+      const tokenName = user.twitter_name || user.twitter_username || "User";
       // Get ticker from body - it should be passed through from the frontend
       const tokenSymbol = customTicker
         ? customTicker.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10)
-        : user.twitter_username.toUpperCase().slice(0, 10);
+        : (user.twitter_username || "USER").toUpperCase().slice(0, 10);
 
       await updateUserToken(privyId, tokenMint, tokenName, tokenSymbol);
 
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Step 1: Prepare (create token + config)
-    const tokenName = user.twitter_name || user.twitter_username;
+    const tokenName = user.twitter_name || user.twitter_username || "User";
 
     // Use custom ticker if provided, otherwise fall back to username
     if (!customTicker || customTicker.length < 2 || customTicker.length > 10) {
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     }
     const tokenSymbol = customTicker.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
 
-    const description = `Social token for @${user.twitter_username} on FriendBags`;
+    const description = `Social token for @${user.twitter_username || "user"} on FriendBags`;
 
     let imageUrl = user.twitter_pfp || "https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png";
     imageUrl = imageUrl.replace(/_normal\.(jpg|png|gif|webp)/, "_400x400.$1")
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
       symbol: tokenSymbol,
       description,
       imageUrl,
-      twitter: user.twitter_username,
+      twitter: user.twitter_username || undefined,
       creatorWallet: walletAddress,
     });
 

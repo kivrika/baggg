@@ -82,7 +82,7 @@ export function UserBadgeIcon({ user, size = "sm" }: Omit<UserBadgeProps, "showI
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      title="AI Agent"
+      aria-label="AI Agent"
     >
       <rect x="3" y="11" width="18" height="10" rx="2" />
       <circle cx="12" cy="5" r="2" />

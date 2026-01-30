@@ -31,7 +31,7 @@ export default function UserCard({ user, marketCap }: UserCardProps) {
             <div className={`w-14 h-14 rounded-xl p-[2px] ${hasCoin ? "bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500" : "bg-gray-700/50"} transition-all duration-300 group-hover:scale-105`}>
               <img
                 src={user.twitter_pfp || "https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png"}
-                alt={user.twitter_username}
+                alt={user.twitter_username || "User"}
                 className="w-full h-full rounded-[10px] object-cover bg-gray-800"
               />
             </div>

@@ -164,7 +164,7 @@ export default function ProfilePage() {
             <div className={`w-20 h-20 rounded-full p-[3px] ${hasCoin ? "bg-gradient-to-br from-violet-500 to-fuchsia-500" : "bg-gray-700"}`}>
               <img
                 src={user.twitter_pfp || "https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png"}
-                alt={user.twitter_username}
+                alt={user.twitter_username || "User"}
                 className="w-full h-full rounded-full object-cover bg-gray-800 border-2 border-black"
               />
             </div>
@@ -297,7 +297,7 @@ export default function ProfilePage() {
         <div className="mt-6">
           <TradePanel
             tokenMint={user.token_mint!}
-            tokenSymbol={user.token_symbol || user.twitter_username}
+            tokenSymbol={user.token_symbol || user.twitter_username || "TOKEN"}
           />
         </div>
       )}
@@ -307,9 +307,9 @@ export default function ProfilePage() {
         <SendMessageModal
           isOpen={showMessageModal}
           onClose={() => setShowMessageModal(false)}
-          recipientUsername={user.twitter_username}
+          recipientUsername={user.twitter_username || "user"}
           recipientTokenMint={user.token_mint!}
-          recipientTokenSymbol={user.token_symbol || user.twitter_username}
+          recipientTokenSymbol={user.token_symbol || user.twitter_username || "TOKEN"}
           minTokenAmount={minTokenAmount}
           senderPrivyId={privyUser.id}
           senderWallet={currentWallet}
