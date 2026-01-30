@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { getOrCreateWallet, StoredWallet } from "@/lib/wallet";
+import { getOrCreateWallet, getKeypair, StoredWallet } from "@/lib/wallet";
+import { Transaction } from "@solana/web3.js";
 
 export default function WalletInfo() {
   const [wallet, setWallet] = useState<StoredWallet | null>(null);
@@ -11,6 +12,14 @@ export default function WalletInfo() {
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [keyCopied, setKeyCopied] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Withdraw state
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawAddress, setWithdrawAddress] = useState("");
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawError, setWithdrawError] = useState<string | null>(null);
+  const [withdrawSuccess, setWithdrawSuccess] = useState<string | null>(null);
 
   // Initialize wallet on mount
   useEffect(() => {
@@ -75,6 +84,90 @@ export default function WalletInfo() {
     setKeyCopied(false);
   };
 
+  // Withdraw handlers
+  const openWithdrawModal = () => {
+    setShowWithdrawModal(true);
+    setWithdrawAddress("");
+    setWithdrawAmount("");
+    setWithdrawError(null);
+    setWithdrawSuccess(null);
+  };
+
+  const closeWithdrawModal = () => {
+    setShowWithdrawModal(false);
+    setWithdrawAddress("");
+    setWithdrawAmount("");
+    setWithdrawError(null);
+    setWithdrawSuccess(null);
+  };
+
+  const setMaxAmount = () => {
+    if (balance !== null) {
+      // Leave 0.001 SOL for fees
+      const maxAmount = Math.max(0, balance - 0.001);
+      setWithdrawAmount(maxAmount.toFixed(6));
+    }
+  };
+
+  const handleWithdraw = async () => {
+    if (!wallet?.publicKey || !withdrawAddress || !withdrawAmount) return;
+
+    setWithdrawing(true);
+    setWithdrawError(null);
+    setWithdrawSuccess(null);
+
+    try {
+      // Create withdraw transaction
+      const createRes = await fetch("/api/withdraw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fromWallet: wallet.publicKey,
+          toAddress: withdrawAddress,
+          amount: withdrawAmount,
+        }),
+      });
+
+      const createData = await createRes.json();
+      if (!createData.success) {
+        throw new Error(createData.error || "Failed to create transaction");
+      }
+
+      // Sign transaction client-side
+      const keypair = getKeypair();
+      if (!keypair) {
+        throw new Error("Failed to get wallet keypair");
+      }
+
+      const txBuffer = Buffer.from(createData.transaction, "base64");
+      const transaction = Transaction.from(txBuffer);
+      transaction.sign(keypair);
+
+      // Send signed transaction
+      const signedTx = transaction.serialize();
+      const sendRes = await fetch("/api/withdraw", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signedTransaction: Buffer.from(signedTx).toString("base64"),
+        }),
+      });
+
+      const sendData = await sendRes.json();
+      if (!sendData.success) {
+        throw new Error(sendData.error || "Failed to send transaction");
+      }
+
+      setWithdrawSuccess(sendData.signature);
+      // Refresh balance after successful withdrawal
+      setTimeout(fetchBalance, 2000);
+    } catch (error) {
+      setWithdrawError(error instanceof Error ? error.message : "Withdrawal failed");
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
   if (!wallet) return null;
 
   const shortAddress = `${wallet.publicKey.slice(0, 6)}...${wallet.publicKey.slice(-4)}`;
@@ -135,6 +228,13 @@ export default function WalletInfo() {
           Copy Address
         </button>
         <button
+          onClick={openWithdrawModal}
+          disabled={balance === null || balance <= 0}
+          className="flex-1 py-2 px-3 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-sm text-green-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Withdraw
+        </button>
+        <button
           onClick={handleExportWallet}
           className="flex-1 py-2 px-3 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-sm text-violet-300 transition"
         >
@@ -191,6 +291,106 @@ export default function WalletInfo() {
                     className="flex-1 py-2 px-4 rounded-lg bg-violet-500 hover:bg-violet-600 text-sm text-white font-medium transition"
                   >
                     {keyCopied ? "Copied!" : "Copy Key"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Withdraw Modal */}
+      {showWithdrawModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1a1a] rounded-xl border border-white/10 p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold text-white mb-4">Withdraw SOL</h3>
+
+            {withdrawSuccess ? (
+              <>
+                <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 mb-4">
+                  <p className="text-sm text-green-400 font-medium">Withdrawal Successful!</p>
+                  <a
+                    href={`https://solscan.io/tx/${withdrawSuccess}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-green-300 hover:underline mt-1 block break-all"
+                  >
+                    View transaction →
+                  </a>
+                </div>
+                <button
+                  onClick={closeWithdrawModal}
+                  className="w-full py-2 px-4 rounded-lg bg-white/5 hover:bg-white/10 text-sm text-gray-300 transition"
+                >
+                  Close
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Available Balance */}
+                <div className="mb-4 p-3 rounded-lg bg-white/5">
+                  <p className="text-xs text-gray-500">Available Balance</p>
+                  <p className="text-lg font-semibold text-white">
+                    {balance?.toFixed(6) || "0"} SOL
+                  </p>
+                </div>
+
+                {/* Destination Address */}
+                <div className="mb-4">
+                  <label className="text-xs text-gray-400 block mb-1">Destination Address</label>
+                  <input
+                    type="text"
+                    value={withdrawAddress}
+                    onChange={(e) => setWithdrawAddress(e.target.value)}
+                    placeholder="Enter Solana wallet address"
+                    className="w-full px-3 py-2 rounded-lg bg-black/50 border border-white/10 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-violet-500/50"
+                  />
+                </div>
+
+                {/* Amount */}
+                <div className="mb-4">
+                  <label className="text-xs text-gray-400 block mb-1">Amount (SOL)</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      value={withdrawAmount}
+                      onChange={(e) => setWithdrawAmount(e.target.value)}
+                      placeholder="0.00"
+                      step="0.001"
+                      min="0"
+                      className="flex-1 px-3 py-2 rounded-lg bg-black/50 border border-white/10 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-violet-500/50"
+                    />
+                    <button
+                      onClick={setMaxAmount}
+                      className="px-3 py-2 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-xs text-violet-300 transition"
+                    >
+                      MAX
+                    </button>
+                  </div>
+                </div>
+
+                {/* Error */}
+                {withdrawError && (
+                  <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                    <p className="text-xs text-red-400">{withdrawError}</p>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={closeWithdrawModal}
+                    disabled={withdrawing}
+                    className="flex-1 py-2 px-4 rounded-lg bg-white/5 hover:bg-white/10 text-sm text-gray-300 transition disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleWithdraw}
+                    disabled={withdrawing || !withdrawAddress || !withdrawAmount || parseFloat(withdrawAmount) <= 0}
+                    className="flex-1 py-2 px-4 rounded-lg bg-green-500 hover:bg-green-600 text-sm text-white font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {withdrawing ? "Sending..." : "Withdraw"}
                   </button>
                 </div>
               </>

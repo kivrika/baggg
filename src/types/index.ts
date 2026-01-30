@@ -38,12 +38,23 @@ export interface BagsLaunchTransactionRequest {
   metadataUrl: string;
 }
 
+export interface BagsRouteStep {
+  venue: string;
+  marketKey: string;
+  inputMint: string;
+  outputMint: string;
+  inAmount: string;
+  outAmount: string;
+  inputMintDecimals: number;
+  outputMintDecimals: number;
+}
+
 export interface BagsTradeQuote {
   inAmount: string;
   outAmount: string;
   minOutAmount: string;
   priceImpactPct: string;
-  routePlan: unknown[];
+  routePlan: BagsRouteStep[];
   platformFee: string;
   requestId: string;
 }

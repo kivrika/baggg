@@ -44,11 +44,13 @@ export async function GET(req: NextRequest) {
       });
 
       // Calculate price per token in SOL
-      // outAmount is in raw token units (with 6 decimals for pump.fun style tokens)
       const solAmountInLamports = parseInt(quoteAmount);
       const tokensReceivedRaw = parseInt(quote.outAmount);
 
-      console.log(`Market cap calc for ${tokenMint}: SOL=${solAmountInLamports}, tokens=${tokensReceivedRaw}`);
+      // Get token decimals from routePlan (default to 9 for Bags tokens)
+      const tokenDecimals = quote.routePlan?.[0]?.outputMintDecimals ?? 9;
+
+      console.log(`Market cap calc for ${tokenMint}: SOL lamports=${solAmountInLamports}, tokens raw=${tokensReceivedRaw}, decimals=${tokenDecimals}`);
 
       if (tokensReceivedRaw === 0) {
         return NextResponse.json({
@@ -57,17 +59,21 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      // Price per token in lamports = solAmountInLamports / tokensReceivedRaw
-      // Then convert to SOL by dividing by 1e9
-      // And multiply by token decimals (1e6) to get price per whole token
-      const pricePerTokenInLamports = (solAmountInLamports / tokensReceivedRaw) * 1e6;
-      const pricePerTokenInSol = pricePerTokenInLamports / 1e9;
+      // Convert to proper units using actual token decimals
+      // SOL: lamports / 1e9 = SOL
+      // Tokens: raw / 10^decimals = whole tokens
+      const solSpent = solAmountInLamports / 1e9; // 0.01 SOL
+      const tokenDivisor = Math.pow(10, tokenDecimals);
+      const tokensReceived = tokensReceivedRaw / tokenDivisor; // whole tokens
+
+      // Price per whole token
+      const pricePerTokenInSol = solSpent / tokensReceived;
       const pricePerTokenInUsd = pricePerTokenInSol * solPrice;
 
-      // Market cap = price * total supply
+      // Market cap = price * total supply (1 billion tokens)
       const marketCap = pricePerTokenInUsd * DEFAULT_TOTAL_SUPPLY;
 
-      console.log(`Market cap result: price=${pricePerTokenInUsd}, mcap=${marketCap}`);
+      console.log(`Price calc: ${solSpent} SOL for ${tokensReceived} tokens = ${pricePerTokenInSol} SOL/token = $${pricePerTokenInUsd}/token, MC=$${marketCap}`);
 
       // Cache the result
       cache.set(tokenMint, { marketCap, timestamp: Date.now() });
@@ -137,10 +143,17 @@ export async function POST(req: NextRequest) {
             const solAmountInLamports = parseInt(quoteAmount);
             const tokensReceivedRaw = parseInt(quote.outAmount);
 
+            // Get token decimals from routePlan (default to 9 for Bags tokens)
+            const tokenDecimals = quote.routePlan?.[0]?.outputMintDecimals ?? 9;
+
             if (tokensReceivedRaw > 0) {
-              // Price per token in lamports, adjusted for token decimals (6 decimals)
-              const pricePerTokenInLamports = (solAmountInLamports / tokensReceivedRaw) * 1e6;
-              const pricePerTokenInSol = pricePerTokenInLamports / 1e9;
+              // Convert to proper units using actual token decimals
+              const solSpent = solAmountInLamports / 1e9; // SOL
+              const tokenDivisor = Math.pow(10, tokenDecimals);
+              const tokensReceived = tokensReceivedRaw / tokenDivisor; // whole tokens
+
+              // Price per whole token
+              const pricePerTokenInSol = solSpent / tokensReceived;
               const pricePerTokenInUsd = pricePerTokenInSol * solPrice;
               const marketCap = pricePerTokenInUsd * DEFAULT_TOTAL_SUPPLY;
 
