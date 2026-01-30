@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserByPrivyId, getUserByTwitter, getChatSettings, getInboxMessages, createMessage } from "@/lib/db";
+import { getUserByPrivyId, getUserByTwitter, getUserByAgentUsername, getChatSettings, getInboxMessages, createMessage } from "@/lib/db";
 import { Connection, PublicKey } from "@solana/web3.js";
+import { authenticateAgent } from "@/middleware/agent-auth";
+import { getUserUsername } from "@/lib/user-utils";
 
 const RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
 
@@ -23,7 +25,7 @@ async function getTokenBalance(wallet: string, tokenMint: string): Promise<numbe
   }
 }
 
-// GET: Get inbox messages for authenticated user
+// GET: Get inbox messages for authenticated user (human or agent)
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -31,13 +33,22 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "50");
     const offset = parseInt(searchParams.get("offset") || "0");
 
-    if (!privyId) {
-      return NextResponse.json({ error: "Missing privyId" }, { status: 400 });
-    }
+    // Try agent authentication first
+    const agent = await authenticateAgent(req);
+    let user;
 
-    const user = await getUserByPrivyId(privyId);
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (agent) {
+      user = agent;
+      console.log(`[Messages] Agent ${agent.agent_username} fetching inbox`);
+    } else {
+      if (!privyId) {
+        return NextResponse.json({ error: "Missing privyId or agent authentication" }, { status: 400 });
+      }
+
+      user = await getUserByPrivyId(privyId);
+      if (!user) {
+        return NextResponse.json({ error: "User not found" }, { status: 404 });
+      }
     }
 
     const messages = await getInboxMessages(user.id, limit, offset);
@@ -56,28 +67,46 @@ export async function GET(req: NextRequest) {
 }
 
 // POST: Send a message (requires EITHER party to hold the other's tokens)
+// Supports both humans and agents
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { privyId, recipientUsername, content } = body;
 
-    if (!privyId || !recipientUsername || !content) {
-      return NextResponse.json({ error: "Missing privyId, recipientUsername, or content" }, { status: 400 });
+    // Validate content
+    if (!recipientUsername || !content) {
+      return NextResponse.json({ error: "Missing recipientUsername or content" }, { status: 400 });
     }
 
-    // Validate content length
     if (content.length > 1000) {
       return NextResponse.json({ error: "Message too long (max 1000 characters)" }, { status: 400 });
     }
 
-    // Get sender
-    const sender = await getUserByPrivyId(privyId);
-    if (!sender) {
-      return NextResponse.json({ error: "Sender not found" }, { status: 404 });
+    // Try agent authentication first
+    const agent = await authenticateAgent(req);
+    let sender;
+
+    if (agent) {
+      sender = agent;
+      console.log(`[Messages] Agent ${agent.agent_username} sending message`);
+    } else {
+      if (!privyId) {
+        return NextResponse.json({ error: "Missing privyId or agent authentication" }, { status: 400 });
+      }
+
+      sender = await getUserByPrivyId(privyId);
+      if (!sender) {
+        return NextResponse.json({ error: "Sender not found" }, { status: 404 });
+      }
     }
 
-    // Get recipient
-    const recipient = await getUserByTwitter(recipientUsername);
+    // Get recipient - try both Twitter username and agent username
+    let recipient = await getUserByTwitter(recipientUsername);
+    if (!recipient) {
+      // Try as agent username
+      recipient = await getUserByAgentUsername(recipientUsername);
+    }
+
     if (!recipient) {
       return NextResponse.json({ error: "Recipient not found" }, { status: 404 });
     }

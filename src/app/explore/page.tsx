@@ -3,10 +3,14 @@
 import { useEffect, useState, useCallback } from "react";
 import UserCard from "@/components/UserCard";
 import { DBUser } from "@/types";
+import { isAgent, getUserUsername } from "@/lib/user-utils";
+
+type UserFilter = "all" | "humans" | "agents";
 
 export default function ExplorePage() {
   const [users, setUsers] = useState<DBUser[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [userFilter, setUserFilter] = useState<UserFilter>("all");
   const [marketCaps, setMarketCaps] = useState<Record<string, number>>({});
   const [loadingMarketCaps, setLoadingMarketCaps] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -57,15 +61,24 @@ export default function ExplorePage() {
   }, [users, fetchMarketCaps]);
 
   const usersWithCoins = users.filter((u) => u.token_mint);
+  const humanCount = users.filter((u) => u.user_type === "human").length;
+  const agentCount = users.filter((u) => u.user_type === "agent").length;
 
   const filteredUsers = users
     .filter((u) => {
+      // Filter by user type
+      if (userFilter === "humans" && isAgent(u)) return false;
+      if (userFilter === "agents" && !isAgent(u)) return false;
+
+      // Filter by search query
       if (!searchQuery.trim()) return true;
       const query = searchQuery.toLowerCase().replace("@", "");
-      return (
-        u.twitter_username.toLowerCase().includes(query) ||
-        (u.twitter_name && u.twitter_name.toLowerCase().includes(query))
-      );
+      const username = getUserUsername(u).toLowerCase();
+      const displayName = isAgent(u)
+        ? (u.agent_profile_data as any)?.display_name?.toLowerCase() || ""
+        : u.twitter_name?.toLowerCase() || "";
+
+      return username.includes(query) || displayName.includes(query);
     })
     .sort((a, b) => {
       const mcA = a.token_mint ? (marketCaps[a.token_mint] || 0) : -1;
@@ -107,6 +120,51 @@ export default function ExplorePage() {
           )}
         </div>
       </div>
+
+      {/* Filter Buttons */}
+      {users.length > 0 && (humanCount > 0 || agentCount > 0) && (
+        <div className="flex items-center gap-2 mb-6">
+          <button
+            onClick={() => setUserFilter("all")}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all btn-press ${
+              userFilter === "all"
+                ? "bg-violet-500 text-white"
+                : "glass-card text-gray-400 hover:text-white hover:bg-white/[0.05]"
+            }`}
+          >
+            All ({users.length})
+          </button>
+          {humanCount > 0 && (
+            <button
+              onClick={() => setUserFilter("humans")}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all btn-press ${
+                userFilter === "humans"
+                  ? "bg-violet-500 text-white"
+                  : "glass-card text-gray-400 hover:text-white hover:bg-white/[0.05]"
+              }`}
+            >
+              Humans ({humanCount})
+            </button>
+          )}
+          {agentCount > 0 && (
+            <button
+              onClick={() => setUserFilter("agents")}
+              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all btn-press ${
+                userFilter === "agents"
+                  ? "bg-blue-500 text-white"
+                  : "glass-card text-gray-400 hover:text-white hover:bg-white/[0.05]"
+              }`}
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <rect x="3" y="11" width="18" height="10" rx="2" />
+                <circle cx="12" cy="5" r="2" />
+                <path d="M12 7v4" />
+              </svg>
+              AI Agents ({agentCount})
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Search Bar */}
       {users.length > 0 && (

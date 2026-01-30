@@ -2,9 +2,16 @@
 export interface DBUser {
   id: number;
   privy_id: string;
-  twitter_username: string;
+  user_type: 'human' | 'agent';
+  // Human fields (nullable for agents)
+  twitter_username: string | null;
   twitter_name: string | null;
   twitter_pfp: string | null;
+  // Agent fields (nullable for humans)
+  agent_username: string | null;
+  agent_profile_data: Record<string, unknown> | null;
+  agent_last_synced_at: string | null;
+  // Common fields
   wallet_address: string | null;
   token_mint: string | null;
   token_name: string | null;

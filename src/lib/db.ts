@@ -23,6 +23,59 @@ async function initDb() {
     )
   `;
 
+  // ─── Agent Support Migrations ───────────────────────────────────
+  // Add agent-related columns if they don't exist
+  try {
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS user_type TEXT NOT NULL DEFAULT 'human' CHECK (user_type IN ('human', 'agent'))`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS agent_username TEXT`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS agent_profile_data JSONB`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS agent_last_synced_at TIMESTAMP`;
+  } catch (e) {
+    // Columns might already exist
+  }
+
+  // Make twitter_username nullable for agents
+  try {
+    await sql`ALTER TABLE users ALTER COLUMN twitter_username DROP NOT NULL`;
+  } catch (e) {
+    // Already nullable or constraint doesn't exist
+  }
+
+  // Drop old twitter_username unique constraint if exists
+  try {
+    await sql`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_twitter_username_key`;
+  } catch (e) {
+    // Constraint might not exist
+  }
+
+  // Create conditional unique indexes
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS users_twitter_username_unique ON users(twitter_username) WHERE user_type = 'human' AND twitter_username IS NOT NULL`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS users_agent_username_unique ON users(agent_username) WHERE user_type = 'agent' AND agent_username IS NOT NULL`;
+
+  // Agent wallets table - server-managed encrypted wallets for agents
+  await sql`
+    CREATE TABLE IF NOT EXISTS agent_wallets (
+      id SERIAL PRIMARY KEY,
+      agent_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+      public_key TEXT NOT NULL,
+      encrypted_private_key TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+
+  // Agent sessions table - JWT tokens for agent authentication
+  await sql`
+    CREATE TABLE IF NOT EXISTS agent_sessions (
+      id SERIAL PRIMARY KEY,
+      agent_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      session_token TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMP NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_agent_sessions_token ON agent_sessions(session_token)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_agent_sessions_agent ON agent_sessions(agent_id)`;
+
   // Chat settings table
   await sql`
     CREATE TABLE IF NOT EXISTS chat_settings (
@@ -53,6 +106,12 @@ async function initDb() {
   await sql`CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id, created_at DESC)`;
 
   initialized = true;
+}
+
+export async function getUserById(id: number): Promise<DBUser | undefined> {
+  await initDb();
+  const rows = await sql`SELECT * FROM users WHERE id = ${id}`;
+  return rows[0] as DBUser | undefined;
 }
 
 export async function getUserByPrivyId(privyId: string): Promise<DBUser | undefined> {
@@ -750,4 +809,122 @@ export async function deleteComment(commentId: number, userId: number): Promise<
     RETURNING id
   `;
   return result.length > 0;
+}
+
+// ─── Agent Functions ─────────────────────────────────────────────
+
+export async function getUserByAgentUsername(username: string): Promise<DBUser | undefined> {
+  await initDb();
+  const rows = await sql`SELECT * FROM users WHERE agent_username = ${username} AND user_type = 'agent'`;
+  return rows[0] as DBUser | undefined;
+}
+
+export async function createAgent(data: {
+  agentUsername: string;
+  agentProfileData: Record<string, unknown>;
+  walletAddress: string;
+}): Promise<DBUser> {
+  await initDb();
+  const rows = await sql`
+    INSERT INTO users (privy_id, user_type, agent_username, agent_profile_data, wallet_address, agent_last_synced_at, twitter_username)
+    VALUES (
+      ${`agent_${data.agentUsername}_${Date.now()}`},
+      'agent',
+      ${data.agentUsername},
+      ${JSON.stringify(data.agentProfileData)},
+      ${data.walletAddress},
+      CURRENT_TIMESTAMP,
+      NULL
+    )
+    RETURNING *
+  `;
+  return rows[0] as DBUser;
+}
+
+export async function updateAgentProfile(agentId: number, profileData: Record<string, unknown>): Promise<void> {
+  await initDb();
+  await sql`
+    UPDATE users
+    SET agent_profile_data = ${JSON.stringify(profileData)},
+        agent_last_synced_at = CURRENT_TIMESTAMP
+    WHERE id = ${agentId} AND user_type = 'agent'
+  `;
+}
+
+export async function getAllAgents(): Promise<DBUser[]> {
+  await initDb();
+  const rows = await sql`SELECT * FROM users WHERE user_type = 'agent' ORDER BY created_at DESC`;
+  return rows as DBUser[];
+}
+
+export async function getAllHumans(): Promise<DBUser[]> {
+  await initDb();
+  const rows = await sql`SELECT * FROM users WHERE user_type = 'human' ORDER BY created_at DESC`;
+  return rows as DBUser[];
+}
+
+// ─── Agent Wallet Functions ──────────────────────────────────────
+
+export interface AgentWallet {
+  id: number;
+  agent_id: number;
+  public_key: string;
+  encrypted_private_key: string;
+  created_at: string;
+}
+
+export async function createAgentWallet(agentId: number, publicKey: string, encryptedPrivateKey: string): Promise<AgentWallet> {
+  await initDb();
+  const rows = await sql`
+    INSERT INTO agent_wallets (agent_id, public_key, encrypted_private_key)
+    VALUES (${agentId}, ${publicKey}, ${encryptedPrivateKey})
+    RETURNING *
+  `;
+  return rows[0] as AgentWallet;
+}
+
+export async function getAgentWallet(agentId: number): Promise<AgentWallet | undefined> {
+  await initDb();
+  const rows = await sql`SELECT * FROM agent_wallets WHERE agent_id = ${agentId}`;
+  return rows[0] as AgentWallet | undefined;
+}
+
+// ─── Agent Session Functions ─────────────────────────────────────
+
+export interface AgentSession {
+  id: number;
+  agent_id: number;
+  session_token: string;
+  expires_at: string;
+  created_at: string;
+}
+
+export async function createAgentSession(agentId: number, sessionToken: string, expiresAt: Date): Promise<AgentSession> {
+  await initDb();
+  const rows = await sql`
+    INSERT INTO agent_sessions (agent_id, session_token, expires_at)
+    VALUES (${agentId}, ${sessionToken}, ${expiresAt.toISOString()})
+    RETURNING *
+  `;
+  return rows[0] as AgentSession;
+}
+
+export async function getAgentSession(sessionToken: string): Promise<AgentSession | undefined> {
+  await initDb();
+  const rows = await sql`
+    SELECT * FROM agent_sessions
+    WHERE session_token = ${sessionToken}
+    AND expires_at > CURRENT_TIMESTAMP
+  `;
+  return rows[0] as AgentSession | undefined;
+}
+
+export async function deleteAgentSession(sessionToken: string): Promise<void> {
+  await initDb();
+  await sql`DELETE FROM agent_sessions WHERE session_token = ${sessionToken}`;
+}
+
+export async function deleteExpiredSessions(): Promise<void> {
+  await initDb();
+  await sql`DELETE FROM agent_sessions WHERE expires_at < CURRENT_TIMESTAMP`;
 }
