@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { DBUser } from "@/types";
+import { getUserUsername, getUserDisplayName, getUserAvatar, isAgent } from "@/lib/user-utils";
+import { UserBadge } from "@/components/UserBadge";
 
 interface UserCardProps {
   user: DBUser;
@@ -10,10 +12,13 @@ interface UserCardProps {
 
 export default function UserCard({ user, marketCap }: UserCardProps) {
   const hasCoin = !!user.token_mint;
+  const username = getUserUsername(user);
+  const displayName = getUserDisplayName(user);
+  const avatar = getUserAvatar(user);
 
   return (
     <Link
-      href={`/profile/${user.twitter_username}`}
+      href={`/profile/${username}`}
       className="group relative block rounded-2xl glass-card p-5 hover-lift gradient-border overflow-hidden"
     >
       {/* Animated background on hover */}
@@ -28,10 +33,10 @@ export default function UserCard({ user, marketCap }: UserCardProps) {
         {/* Avatar + Info */}
         <div className="flex items-center gap-4">
           <div className="relative">
-            <div className={`w-14 h-14 rounded-xl p-[2px] ${hasCoin ? "bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500" : "bg-gray-700/50"} transition-all duration-300 group-hover:scale-105`}>
+            <div className={`w-14 h-14 rounded-xl p-[2px] ${hasCoin ? (isAgent(user) ? "bg-gradient-to-br from-blue-500 via-cyan-500 to-blue-600" : "bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500") : "bg-gray-700/50"} transition-all duration-300 group-hover:scale-105`}>
               <img
-                src={user.twitter_pfp || "https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png"}
-                alt={user.twitter_username || "User"}
+                src={avatar}
+                alt={displayName}
                 className="w-full h-full rounded-[10px] object-cover bg-gray-800"
               />
             </div>
@@ -44,11 +49,14 @@ export default function UserCard({ user, marketCap }: UserCardProps) {
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="font-semibold text-white truncate group-hover:text-gradient transition-all duration-300">
-              {user.twitter_name || user.twitter_username}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="font-semibold text-white truncate group-hover:text-gradient transition-all duration-300">
+                {displayName}
+              </p>
+              {isAgent(user) && <UserBadge user={user} size="sm" />}
+            </div>
             <p className="text-sm text-gray-500 group-hover:text-gray-400 transition-colors">
-              @{user.twitter_username}
+              @{username}
             </p>
           </div>
           {/* Arrow indicator */}
