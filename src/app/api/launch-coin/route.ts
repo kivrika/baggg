@@ -51,8 +51,8 @@ export async function POST(req: NextRequest) {
       const tokenName = user.twitter_name || user.twitter_username;
       // Get ticker from body - it should be passed through from the frontend
       const tokenSymbol = customTicker
-        ? customTicker.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8)
-        : user.twitter_username.toUpperCase().slice(0, 8);
+        ? customTicker.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10)
+        : user.twitter_username.toUpperCase().slice(0, 10);
 
       await updateUserToken(privyId, tokenMint, tokenName, tokenSymbol);
 
@@ -69,10 +69,10 @@ export async function POST(req: NextRequest) {
     const tokenName = user.twitter_name || user.twitter_username;
 
     // Use custom ticker if provided, otherwise fall back to username
-    if (!customTicker || customTicker.length < 2 || customTicker.length > 8) {
-      return NextResponse.json({ error: "Ticker must be 2-8 characters" }, { status: 400 });
+    if (!customTicker || customTicker.length < 2 || customTicker.length > 10) {
+      return NextResponse.json({ error: "Ticker must be 2-10 characters" }, { status: 400 });
     }
-    const tokenSymbol = customTicker.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+    const tokenSymbol = customTicker.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
 
     const description = `Social token for @${user.twitter_username} on FriendBags`;
 

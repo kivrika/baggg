@@ -29,7 +29,7 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
   // Validate ticker
   const validateTicker = (value: string) => {
     const cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
-    if (cleaned.length > 8) return cleaned.slice(0, 8);
+    if (cleaned.length > 10) return cleaned.slice(0, 10);
     return cleaned;
   };
 
@@ -39,8 +39,8 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
 
     if (value.length < 2) {
       setTickerError("Ticker must be at least 2 characters");
-    } else if (value.length > 8) {
-      setTickerError("Ticker cannot exceed 8 characters");
+    } else if (value.length > 10) {
+      setTickerError("Ticker cannot exceed 10 characters");
     } else {
       setTickerError(null);
     }
@@ -317,8 +317,8 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
       }
       // Validate ticker before launch
       const ticker = customTicker.trim();
-      if (ticker.length < 2 || ticker.length > 8) {
-        throw new Error("Ticker must be 2-8 characters");
+      if (ticker.length < 2 || ticker.length > 10) {
+        throw new Error("Ticker must be 2-10 characters");
       }
 
       // Step 1: Prepare token (create token info + fee config)
@@ -473,14 +473,14 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
     }
   };
 
-  const canLaunch = walletAddress && customTicker.length >= 2 && customTicker.length <= 8 && !tickerError;
+  const canLaunch = walletAddress && customTicker.length >= 2 && customTicker.length <= 10 && !tickerError;
 
   return (
     <div className="space-y-4">
       {/* Ticker Input */}
       <div>
         <label className="block text-sm text-gray-400 mb-2">
-          Token Ticker (2-8 characters)
+          Token Ticker (2-10 characters)
         </label>
         <input
           type="text"
@@ -489,7 +489,7 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
           placeholder="e.g. BAGS"
           disabled={loading}
           className="w-full px-4 py-3 rounded-lg bg-white/[0.05] border border-white/[0.1] text-white placeholder-gray-600 focus:outline-none focus:border-violet-500/50 uppercase disabled:opacity-50"
-          maxLength={8}
+          maxLength={10}
         />
         {tickerError && (
           <p className="mt-1 text-xs text-red-400">{tickerError}</p>
