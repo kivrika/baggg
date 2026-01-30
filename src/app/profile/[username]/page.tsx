@@ -39,7 +39,7 @@ export default function ProfilePage() {
       .then((data) => {
         if (data.success) {
           const found = data.users.find(
-            (u: DBUser) => u.twitter_username === username
+            (u: DBUser) => u.twitter_username === username || u.agent_username === username
           );
           setUser(found || null);
         }
