@@ -201,3 +201,9 @@ export async function getUnreadCount(userId: number): Promise<number> {
   const rows = await sql`SELECT COUNT(*) as count FROM messages WHERE recipient_id = ${userId} AND is_read = false`;
   return parseInt(rows[0].count as string) || 0;
 }
+
+export async function hasMessaged(senderId: number, recipientId: number): Promise<boolean> {
+  await initDb();
+  const rows = await sql`SELECT 1 FROM messages WHERE sender_id = ${senderId} AND recipient_id = ${recipientId} LIMIT 1`;
+  return rows.length > 0;
+}

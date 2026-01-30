@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST: Send a message (requires holding recipient's tokens)
+// POST: Send a message (requires holding recipient's tokens OR being a creator replying)
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -76,41 +76,53 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Sender not found" }, { status: 404 });
     }
 
-    if (!sender.wallet_address) {
-      return NextResponse.json({ error: "Sender wallet not set" }, { status: 400 });
-    }
-
     // Get recipient
     const recipient = await getUserByTwitter(recipientUsername);
     if (!recipient) {
       return NextResponse.json({ error: "Recipient not found" }, { status: 404 });
     }
 
-    if (!recipient.token_mint) {
-      return NextResponse.json({ error: "Recipient has no token" }, { status: 400 });
+    // Check if sender is a creator replying to someone who messaged them
+    // Creator can reply if: they have a coin AND recipient has previously messaged them
+    let isCreatorReplying = false;
+    if (sender.token_mint) {
+      // Check if recipient has previously sent messages to sender
+      const { hasMessaged } = await import("@/lib/db").then(m => ({ hasMessaged: m.hasMessaged }));
+      isCreatorReplying = await hasMessaged(recipient.id, sender.id);
     }
 
-    // Get recipient's chat settings
-    const chatSettings = await getChatSettings(recipient.id);
+    // If not a creator replying, enforce token requirements
+    if (!isCreatorReplying) {
+      if (!sender.wallet_address) {
+        return NextResponse.json({ error: "Sender wallet not set" }, { status: 400 });
+      }
 
-    // Check if chat is enabled
-    if (chatSettings && !chatSettings.is_enabled) {
-      return NextResponse.json({ error: "This user has disabled chat" }, { status: 403 });
-    }
+      if (!recipient.token_mint) {
+        return NextResponse.json({ error: "Recipient has no token" }, { status: 400 });
+      }
 
-    // Get required token amount (default 0 if no settings)
-    const minTokenAmount = chatSettings ? parseFloat(chatSettings.min_token_amount) : 0;
+      // Get recipient's chat settings
+      const chatSettings = await getChatSettings(recipient.id);
 
-    // Verify sender's token balance
-    if (minTokenAmount > 0) {
-      const balance = await getTokenBalance(sender.wallet_address, recipient.token_mint);
+      // Check if chat is enabled
+      if (chatSettings && !chatSettings.is_enabled) {
+        return NextResponse.json({ error: "This user has disabled chat" }, { status: 403 });
+      }
 
-      if (balance < minTokenAmount) {
-        return NextResponse.json({
-          error: `You need at least ${minTokenAmount} ${recipient.token_symbol || 'tokens'} to message this user. Your balance: ${balance}`,
-          required: minTokenAmount,
-          balance: balance,
-        }, { status: 403 });
+      // Get required token amount (default 0 if no settings)
+      const minTokenAmount = chatSettings ? parseFloat(chatSettings.min_token_amount) : 0;
+
+      // Verify sender's token balance
+      if (minTokenAmount > 0) {
+        const balance = await getTokenBalance(sender.wallet_address, recipient.token_mint);
+
+        if (balance < minTokenAmount) {
+          return NextResponse.json({
+            error: `You need at least ${minTokenAmount} ${recipient.token_symbol || 'tokens'} to message this user. Your balance: ${balance}`,
+            required: minTokenAmount,
+            balance: balance,
+          }, { status: 403 });
+        }
       }
     }
 

@@ -193,7 +193,7 @@ export default function MessagesPage() {
           {conversations.map(({ sender, messages: msgs, unreadCount }) => (
             <Link
               key={sender.username}
-              href={`/profile/${sender.username}`}
+              href={`/chat/${sender.username}`}
               className="flex items-start gap-4 p-4 rounded-2xl glass-card hover:bg-white/[0.04] border border-white/[0.04] hover:border-violet-500/30 transition group"
             >
               {sender.pfp ? (
