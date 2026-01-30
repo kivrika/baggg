@@ -36,8 +36,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { step, tokenMint, tokenMetadata, configKey, customTicker, signedConfigTransactions } =
-      body;
+    const { step, tokenMint, tokenMetadata, configKey, customTicker } = body;
 
     // Verify agent doesn't already have a token
     if (agent.token_mint) {
