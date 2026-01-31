@@ -5,6 +5,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { Connection, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { getOrCreateWallet, getKeypair } from "@/lib/wallet";
+import FeeShareConfig, { FeeClaimer } from "./FeeShareConfig";
 
 // Solana RPC endpoint - can be configured via env or use fallback
 const RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
@@ -20,6 +21,7 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
   const [status, setStatus] = useState<string | null>(null);
   const [customTicker, setCustomTicker] = useState("");
   const [tickerError, setTickerError] = useState<string | null>(null);
+  const [feeClaimers, setFeeClaimers] = useState<FeeClaimer[]>([]);
 
   useEffect(() => {
     const wallet = getOrCreateWallet();
@@ -321,6 +323,16 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
         throw new Error("Ticker must be 2-10 characters");
       }
 
+      // Convert fee claimers to API format
+      const feeClaimersForApi = feeClaimers.length > 0 ? (() => {
+        const creatorShare = 100 - feeClaimers.reduce((sum, c) => sum + c.percentage, 0);
+        const allClaimers = [
+          { wallet: walletAddress, basisPoints: creatorShare * 100 },
+          ...feeClaimers.map(c => ({ wallet: c.wallet!, basisPoints: c.percentage * 100 }))
+        ];
+        return allClaimers;
+      })() : undefined;
+
       // Step 1: Prepare token (create token info + fee config)
       const prepareRes = await fetch("/api/launch-coin", {
         method: "POST",
@@ -329,6 +341,7 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
           privyId: user.id,
           walletAddress: walletAddress,
           customTicker: ticker,
+          feeClaimers: feeClaimersForApi,
         }),
       });
 
@@ -476,7 +489,7 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
   const canLaunch = walletAddress && customTicker.length >= 2 && customTicker.length <= 10 && !tickerError;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Ticker Input */}
       <div>
         <label className="block text-sm text-gray-400 mb-2">
@@ -500,6 +513,12 @@ export default function LaunchCoinButton({ onLaunched }: LaunchCoinButtonProps) 
           </p>
         )}
       </div>
+
+      {/* Fee Sharing Configuration */}
+      <FeeShareConfig
+        onClaimersChange={setFeeClaimers}
+        disabled={loading}
+      />
 
       <button
         onClick={handleLaunch}

@@ -6,7 +6,7 @@ import { prepareToken, finalizeToken } from "@/lib/bags-sdk";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { privyId, walletAddress, step, tokenMint, tokenMetadata, configKey, customTicker } = body;
+    const { privyId, walletAddress, step, tokenMint, tokenMetadata, configKey, customTicker, feeClaimers } = body;
 
     if (!privyId || !walletAddress) {
       return NextResponse.json({ error: "Missing privyId or walletAddress" }, { status: 400 });
@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
       imageUrl,
       twitter: user.twitter_username || undefined,
       creatorWallet: walletAddress,
+      feeClaimers: feeClaimers || undefined,
     });
 
     // Don't save to DB yet - only after successful launch

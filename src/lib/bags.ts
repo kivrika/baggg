@@ -266,3 +266,109 @@ export async function getClaimStats(tokenMint: string): Promise<ClaimStatsRespon
 
 // SOL mint address (native wrapped SOL)
 export const SOL_MINT = "So11111111111111111111111111111111111111112";
+
+// ─── Agent Authentication & Management ─────────────────────────
+
+const AGENT_BASE_URL = "https://public-api-v2.bags.fm/api/v1/agent";
+
+async function agentRequest<T>(
+  method: "GET" | "POST",
+  path: string,
+  body?: Record<string, unknown>,
+  token?: string
+): Promise<T> {
+  const url = `${AGENT_BASE_URL}${path}`;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(url, {
+    method,
+    headers,
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+
+  const data = await res.json();
+  console.log(`BagsAgentAPI ${method} ${path} - Response:`, JSON.stringify(data, null, 2));
+
+  if (!res.ok) {
+    throw new Error(data.error || data.message || `Agent API error: ${res.status}`);
+  }
+
+  return data as T;
+}
+
+// Initialize agent authentication session
+export async function initAgentAuth(agentUsername: string) {
+  return agentRequest<{
+    challenge: string;
+    expiresAt: string;
+  }>("POST", "/auth/init", {
+    agentUsername,
+  });
+}
+
+// Complete agent login (after posting verification)
+export async function completeAgentLogin(agentUsername: string) {
+  return agentRequest<{
+    token: string;
+    expiresAt: string;
+  }>("POST", "/auth/login", {
+    agentUsername,
+  });
+}
+
+// Create API key for agent
+export async function createAgentApiKey(jwtToken: string, keyName: string) {
+  return agentRequest<{
+    apiKey: {
+      key: string;
+      name: string;
+      createdAt: string;
+    };
+  }>("POST", "/dev/keys/create", {
+    token: jwtToken,
+    name: keyName,
+  });
+}
+
+// List agent wallets
+export async function listAgentWallets(jwtToken: string) {
+  return agentRequest<{
+    wallets: Array<{
+      address: string;
+      isPrimary: boolean;
+    }>;
+  }>("POST", "/wallet/list", {
+    token: jwtToken,
+  });
+}
+
+// Export agent wallet private key
+export async function exportAgentWallet(jwtToken: string, walletAddress: string) {
+  return agentRequest<{
+    privateKey: string;
+    address: string;
+  }>("POST", "/wallet/export", {
+    token: jwtToken,
+    wallet: walletAddress,
+  });
+}
+
+// Resolve username to wallet address via identity provider
+export async function resolveWalletFromUsername(
+  provider: "moltbook" | "twitter" | "github",
+  username: string
+): Promise<{ wallet: string }> {
+  return bagsRequest<{ wallet: string }>(
+    "GET",
+    "/token-launch/fee-share/wallet/v2",
+    undefined,
+    { provider, username }
+  );
+}

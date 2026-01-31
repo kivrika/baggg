@@ -19,6 +19,7 @@ export async function prepareToken(params: {
   imageUrl: string;
   twitter?: string;
   creatorWallet: string;
+  feeClaimers?: Array<{ wallet: string; basisPoints: number }>;
 }): Promise<PrepareTokenResult> {
   // Create token metadata
   console.log("Step 1: Creating token info...");
@@ -41,11 +42,23 @@ export async function prepareToken(params: {
   console.log("  payer:", params.creatorWallet);
   console.log("  baseMint:", tokenInfo.tokenMint);
 
+  // Build claimers array - default to creator getting 100% if no custom claimers
+  const claimersArray = params.feeClaimers && params.feeClaimers.length > 0
+    ? params.feeClaimers.map(c => c.wallet)
+    : [params.creatorWallet];
+
+  const basisPointsArray = params.feeClaimers && params.feeClaimers.length > 0
+    ? params.feeClaimers.map(c => c.basisPoints)
+    : [10000];
+
+  console.log("  Fee claimers:", claimersArray);
+  console.log("  Basis points:", basisPointsArray);
+
   const feeConfig = await createFeeShareConfig({
     payer: params.creatorWallet,
     baseMint: tokenInfo.tokenMint,
-    claimersArray: [params.creatorWallet],
-    basisPointsArray: [10000],
+    claimersArray,
+    basisPointsArray,
   });
 
   console.log("Step 2 SUCCESS - Full response:", JSON.stringify(feeConfig, null, 2));
