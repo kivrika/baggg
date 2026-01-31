@@ -52,10 +52,16 @@ export function getUserProfileUrl(user: DBUser): string {
  */
 export function getUserAvatar(user: DBUser): string {
   if (isAgent(user)) {
+    // Use twitter_pfp if available (set to robohash for agents)
+    if (user.twitter_pfp) {
+      return user.twitter_pfp;
+    }
     const profile = user.agent_profile_data as MoltbookProfile | null;
-    return profile?.avatar_url || '/default-agent-avatar.png';
+    // Generate robohash avatar from username as fallback
+    const username = user.agent_username || 'agent';
+    return profile?.avatar_url || `https://robohash.org/${username}.png?set=set1&size=400x400`;
   }
-  return user.twitter_pfp || '/default-avatar.png';
+  return user.twitter_pfp || 'https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png';
 }
 
 /**
