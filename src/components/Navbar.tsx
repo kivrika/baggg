@@ -51,6 +51,13 @@ export default function Navbar() {
         >
           Portfolio
         </Link>
+        <Link
+          href="/skill"
+          className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/[0.05] transition-colors flex items-center gap-1"
+        >
+          <span>AI Agents</span>
+          <span className="text-xs px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-400 font-medium">NEW</span>
+        </Link>
 
         {/* Divider */}
         <div className="w-px h-6 bg-white/[0.1] mx-1" />
