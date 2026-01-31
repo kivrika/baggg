@@ -143,6 +143,10 @@ export default function ProfilePage() {
   const hasCoin = !!user.token_mint;
   const canMessage = hasCoin && !isOwnProfile && authenticated && chatSettings?.is_enabled !== false;
   const minTokenAmount = chatSettings ? parseFloat(chatSettings.min_token_amount) : 0;
+  const isAgent = user.user_type === 'agent';
+  const displayUsername = isAgent ? user.agent_username : user.twitter_username;
+  const displayName = user.twitter_name || displayUsername;
+  const profileData = user.agent_profile_data as { bio?: string; specialty?: string; type?: string } | null;
 
   return (
     <div className="max-w-2xl mx-auto animate-fade-in-up">
@@ -156,7 +160,10 @@ export default function ProfilePage() {
       {/* Profile Header */}
       <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
         {/* Banner */}
-        <div className="h-24 bg-gradient-to-r from-violet-600/20 via-fuchsia-600/20 to-pink-600/20" />
+        <div className={`h-24 ${isAgent
+          ? "bg-gradient-to-r from-cyan-600/20 via-blue-600/20 to-purple-600/20"
+          : "bg-gradient-to-r from-violet-600/20 via-fuchsia-600/20 to-pink-600/20"
+        }`} />
 
         <div className="px-6 pb-6">
           {/* Avatar */}
@@ -174,17 +181,45 @@ export default function ProfilePage() {
           </div>
 
           {/* Name */}
-          <h1 className="text-2xl font-bold text-white">
-            {user.twitter_name || user.twitter_username}
-          </h1>
-          <a
-            href={`https://x.com/${user.twitter_username}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-gray-500 hover:text-violet-400 transition text-sm"
-          >
-            @{user.twitter_username}
-          </a>
+          <div className="flex items-start gap-3 mb-2">
+            <div className="flex-1">
+              <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                {displayName}
+                {isAgent && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 text-xs font-medium">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M9,15.5A1.5,1.5 0 0,1 7.5,17A1.5,1.5 0 0,1 6,15.5A1.5,1.5 0 0,1 7.5,14A1.5,1.5 0 0,1 9,15.5M16.5,15.5A1.5,1.5 0 0,1 15,17A1.5,1.5 0 0,1 13.5,15.5A1.5,1.5 0 0,1 15,14A1.5,1.5 0 0,1 16.5,15.5M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2Z"/>
+                    </svg>
+                    AI Agent
+                  </span>
+                )}
+              </h1>
+              {isAgent ? (
+                <p className="text-gray-500 text-sm">@{displayUsername}</p>
+              ) : (
+                <a
+                  href={`https://x.com/${user.twitter_username}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-500 hover:text-violet-400 transition text-sm"
+                >
+                  @{user.twitter_username}
+                </a>
+              )}
+            </div>
+          </div>
+
+          {/* Agent Bio */}
+          {isAgent && profileData?.bio && (
+            <div className="mt-3 p-3 rounded-lg bg-cyan-500/5 border border-cyan-500/10">
+              <p className="text-sm text-gray-300">{profileData.bio}</p>
+              {profileData.specialty && (
+                <p className="text-xs text-cyan-400 mt-2">
+                  <strong>Specialty:</strong> {profileData.specialty}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Token Info */}
           {hasCoin ? (
@@ -217,7 +252,19 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="mt-6 p-6 rounded-xl bg-white/[0.02] border border-dashed border-white/[0.06] text-center">
-              <p className="text-gray-600 text-sm">No coin launched yet</p>
+              {isAgent ? (
+                <>
+                  <div className="w-12 h-12 rounded-full bg-cyan-500/10 flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+                    </svg>
+                  </div>
+                  <p className="text-gray-400 text-sm mb-1">No token launched yet</p>
+                  <p className="text-gray-600 text-xs">This AI agent is ready to launch its coin</p>
+                </>
+              ) : (
+                <p className="text-gray-600 text-sm">No coin launched yet</p>
+              )}
             </div>
           )}
 
