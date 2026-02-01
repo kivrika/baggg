@@ -66,7 +66,7 @@ export default function ChatPage() {
       .then((data) => {
         if (data.success) {
           const found = data.users.find(
-            (u: DBUser) => u.twitter_username === username
+            (u: DBUser) => u.twitter_username === username || u.agent_username === username
           );
           setOtherUser(found || null);
         }
@@ -176,6 +176,7 @@ export default function ChatPage() {
 
   // Can send if either condition is met
   const canSend = iHoldEnoughOfTheirTokens || theyHoldEnoughOfMyTokens;
+  const isAgent = otherUser?.user_type === 'agent';
 
   const handleSend = async () => {
     if (!newMessage.trim() || !privyUser?.id || sending) return;
@@ -295,7 +296,9 @@ export default function ChatPage() {
   return (
     <div className="max-w-2xl mx-auto animate-fade-in-up">
       {/* Chat Header */}
-      <div className="flex items-center gap-4 pb-4 border-b border-white/[0.06] mb-4">
+      <div className={`flex items-center gap-4 pb-4 border-b mb-4 ${
+        isAgent ? "border-cyan-500/20" : "border-white/[0.06]"
+      }`}>
         <Link href="/messages" className="p-2 -ml-2 rounded-lg hover:bg-white/[0.05] text-gray-400 hover:text-white transition">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
@@ -304,25 +307,45 @@ export default function ChatPage() {
 
         <Link href={`/profile/${username}`} className="flex items-center gap-3 flex-1 group">
           <div className="relative">
-            <img
-              src={otherUser.twitter_pfp || "https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png"}
-              alt={username}
-              className="w-10 h-10 rounded-full"
-            />
+            <div className={`p-[2px] rounded-full ${isAgent ? "bg-gradient-to-br from-cyan-500 to-blue-500" : ""}`}>
+              <img
+                src={otherUser.twitter_pfp || "https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png"}
+                alt={username}
+                className={`w-10 h-10 rounded-full ${isAgent ? "border-2 border-[#030303]" : ""}`}
+              />
+            </div>
             {otherUser.token_mint && (
               <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-green-500 border-2 border-[#030303]" />
             )}
+            {isAgent && (
+              <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-cyan-500 border-2 border-[#030303] flex items-center justify-center">
+                <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M9,15.5A1.5,1.5 0 0,1 7.5,17A1.5,1.5 0 0,1 6,15.5A1.5,1.5 0 0,1 7.5,14A1.5,1.5 0 0,1 9,15.5M16.5,15.5A1.5,1.5 0 0,1 15,17A1.5,1.5 0 0,1 13.5,15.5A1.5,1.5 0 0,1 15,14A1.5,1.5 0 0,1 16.5,15.5M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2Z"/>
+                </svg>
+              </div>
+            )}
           </div>
           <div>
-            <h2 className="font-semibold text-white group-hover:text-violet-300 transition">
+            <h2 className={`font-semibold text-white group-hover:transition flex items-center gap-2 ${
+              isAgent ? "group-hover:text-cyan-300" : "group-hover:text-violet-300"
+            }`}>
               {otherUser.twitter_name || username}
+              {isAgent && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 font-medium">
+                  AI
+                </span>
+              )}
             </h2>
             <p className="text-xs text-gray-500">@{username}</p>
           </div>
         </Link>
 
         {otherUser.token_symbol && (
-          <span className="text-xs font-medium text-violet-400 bg-violet-500/10 px-2 py-1 rounded-full">
+          <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+            isAgent
+              ? "text-cyan-400 bg-cyan-500/10"
+              : "text-violet-400 bg-violet-500/10"
+          }`}>
             {otherUser.token_symbol}
           </span>
         )}
@@ -402,6 +425,8 @@ export default function ChatPage() {
                           className={`max-w-[75%] px-4 py-2.5 rounded-2xl ${
                             isMine
                               ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-br-md"
+                              : isAgent
+                              ? "bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border border-cyan-500/20 text-cyan-100 rounded-bl-md"
                               : "bg-white/[0.08] text-gray-200 rounded-bl-md"
                           }`}
                         >
